@@ -77,7 +77,7 @@ export const getBrands = async (req, res) => {
     if (type) {
       const brands = await query(
         `
-                SELECT * FROM brands
+                SELECT brand_name FROM brands
                 WHERE liquor_type = $1
             `,
         [type]
@@ -87,7 +87,7 @@ export const getBrands = async (req, res) => {
     } else {
       const brands = await query(
         `
-            SELECT * FROM brands
+            SELECT brand_name,id FROM brands
             `
       );
       res.status(200).json(brands.rows);

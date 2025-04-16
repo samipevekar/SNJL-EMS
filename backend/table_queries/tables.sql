@@ -140,7 +140,10 @@ CREATE TABLE balance_sheets (
     details TEXT NOT NULL,
     debit NUMERIC DEFAULT 0,
     credit NUMERIC DEFAULT 0,
-    balance NUMERIC DEFAULT 0
+    balance NUMERIC DEFAULT 0,
+    sale_sheet_id integer,
+    manageral_expense_id INT REFERENCES manageral_expenses(id) ON DELETE SET NULL;
+    warehouse_payment_id INT REFERENCES warehouse_payments(id) ON DELETE SET NULL;
 );
 
 CREATE TABLE warehouse_balance_sheets (
@@ -150,7 +153,9 @@ CREATE TABLE warehouse_balance_sheets (
     details TEXT NOT NULL,
     debit NUMERIC DEFAULT 0,
     credit NUMERIC DEFAULT 0,
-    balance NUMERIC DEFAULT 0
+    balance NUMERIC DEFAULT 0,
+    sale_sheet_id integer,
+    warehouse_payment_id INT REFERENCES warehouse_payments(id) ON DELETE SET NULL;
 );
 
 

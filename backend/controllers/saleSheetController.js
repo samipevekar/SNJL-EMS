@@ -4,7 +4,6 @@ import { query } from "../db/db.js";
 export const createSaleSheet = async (req, res) => {
   const {
     shop_id,
-    liquor_type,
     brand_name,
     volume_ml,
     sale,
@@ -16,6 +15,23 @@ export const createSaleSheet = async (req, res) => {
   let { opening_balance } = req.body;
 
   try {
+    const currentDate = new Date().toISOString().split("T")[0];
+    console.log(currentDate)
+
+    // ✅ Check for existing sale sheet for same shop, brand, volume, and date
+    const existingSheet = await query(
+      `SELECT * FROM sale_sheets WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3 AND sale_date = $4`,
+      [shop_id, brand_name, volume_ml, currentDate]
+    );
+
+    if (existingSheet.rowCount > 0) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "Sale sheet already exists for today",
+      });
+    }
+
     const shop = await query(`SELECT * FROM shops WHERE shop_id = $1`, [
       shop_id,
     ]);
@@ -23,10 +39,12 @@ export const createSaleSheet = async (req, res) => {
       return res.status(404).json({ message: "Shop not found" });
     }
 
+    const liquor_type = shop.rows[0].liquor_type;
+
     if (liquor_type === "country" && shop.rows[0].liquor_type !== "country") {
       return res
         .status(400)
-        .json({ message: "Shop does not sell country liquor" });
+        .json({ success: false, error: "Shop does not sell country liquor" });
     }
 
     if (
@@ -35,7 +53,7 @@ export const createSaleSheet = async (req, res) => {
     ) {
       return res
         .status(400)
-        .json({ message: "Shop does not sell foreign liquor" });
+        .json({ success: false, error: "Shop does not sell foreign liquor" });
     }
 
     const brandData = await query(
@@ -46,7 +64,10 @@ export const createSaleSheet = async (req, res) => {
     if (brandData.rowCount === 0) {
       return res
         .status(404)
-        .json({ message: "Brand not found with given volume or liquor type" });
+        .json({
+          success: false,
+          error: "Brand not found with given volume or liquor type",
+        });
     }
 
     const { mrp_per_unit, cost_price_per_case, duty, pieces_per_case } =
@@ -121,8 +142,6 @@ export const createSaleSheet = async (req, res) => {
         100,
       ]
     );
-
-    const currentDate = new Date().toISOString().split("T")[0];
 
     // Balance Sheet Update - Shop
     const prevBalanceShopResult = await query(
@@ -229,6 +248,7 @@ export const createSaleSheet = async (req, res) => {
     }
 
     res.json({
+      success: true,
       message: "Sale sheet created successfully",
       data: result.rows[0],
     });
@@ -280,10 +300,14 @@ export const updateSaleSheet = async (req, res) => {
         .json({ message: "Brand not found with given details" });
     }
 
-    const { mrp_per_unit, cost_price_per_case, pieces_per_case } = brandData.rows[0];
+    const { mrp_per_unit, cost_price_per_case, pieces_per_case } =
+      brandData.rows[0];
 
     const validSale = parseNumber(sale, existingSheet.sale);
-    const opening_balance = parseNumber(rawOpeningBalance, existingSheet.opening_balance);
+    const opening_balance = parseNumber(
+      rawOpeningBalance,
+      existingSheet.opening_balance
+    );
     const parsedExpenses = Array.isArray(expenses)
       ? expenses.map((exp) => ({ ...exp, amount: parseNumber(exp.amount) }))
       : existingSheet.expenses;
@@ -330,102 +354,103 @@ export const updateSaleSheet = async (req, res) => {
 
     const currentDate = new Date().toISOString().split("T")[0];
 
-    // ===== SHOP BALANCE UPDATE (NET CASH) =====
-    const shopBalanceRow = await query(
-      `SELECT id, balance, credit FROM balance_sheets WHERE type = $1 AND sale_sheet_id = $2`,
-      [existingSheet.shop_id, id]
-    );
-    if (shopBalanceRow.rowCount > 0) {
-      const prevCredit = parseNumber(shopBalanceRow.rows[0].credit);
-      const prevBalance = parseNumber(shopBalanceRow.rows[0].balance);
-      const newBalance = prevBalance - prevCredit + net_cash;
-
-      await query(
-        `UPDATE balance_sheets SET date = $1, details = $2, debit = $3, credit = $4, balance = $5 WHERE id = $6`,
-        [
-          currentDate,
-          "Net Cash (Update)",
-          0,
-          net_cash,
-          newBalance,
-          shopBalanceRow.rows[0].id,
-        ]
+    // ================= SHOP BALANCE ======================
+    const updateAndCascadeBalances = async (typeValue, shopId) => {
+      const current = await query(
+        `SELECT id, balance, credit FROM balance_sheets WHERE type = $1 AND sale_sheet_id = $2`,
+        [typeValue, id]
       );
-    }
 
-    const allBalanceRow = await query(
-      `SELECT id, balance, credit FROM balance_sheets WHERE type = 'all' AND sale_sheet_id = $1`,
-      [id]
+      if (current.rowCount > 0) {
+        const prevCredit = parseNumber(current.rows[0].credit);
+        const prevBalance = parseNumber(current.rows[0].balance);
+        const newBalance = prevBalance - prevCredit + net_cash;
+
+        await query(
+          `UPDATE balance_sheets SET date = $1, details = $2, debit = $3, credit = $4, balance = $5 WHERE id = $6`,
+          [currentDate, "Net Cash", 0, net_cash, newBalance, current.rows[0].id]
+        );
+
+        // Cascade update all future balance rows
+        const futureRows = await query(
+          `SELECT id, credit, debit FROM balance_sheets WHERE type = $1 AND sale_sheet_id > $2 ORDER BY sale_sheet_id ASC`,
+          [typeValue, id]
+        );
+
+        let runningBalance = newBalance;
+        for (const row of futureRows.rows) {
+          runningBalance += parseNumber(row.credit) - parseNumber(row.debit);
+          await query(`UPDATE balance_sheets SET balance = $1 WHERE id = $2`, [
+            runningBalance,
+            row.id,
+          ]);
+        }
+      }
+    };
+
+    await updateAndCascadeBalances(
+      existingSheet.shop_id,
+      existingSheet.shop_id
     );
-    if (allBalanceRow.rowCount > 0) {
-      const prevCredit = parseNumber(allBalanceRow.rows[0].credit);
-      const prevBalance = parseNumber(allBalanceRow.rows[0].balance);
-      const newBalance = prevBalance - prevCredit + net_cash;
+    await updateAndCascadeBalances("all", existingSheet.shop_id);
 
-      await query(
-        `UPDATE balance_sheets SET date = $1, details = $2, debit = $3, credit = $4, balance = $5 WHERE id = $6`,
-        [
-          currentDate,
-          "Net Cash (Update)",
-          0,
-          net_cash,
-          newBalance,
-          allBalanceRow.rows[0].id,
-        ]
+    // ================ WAREHOUSE BALANCE ==================
+    const updateAndCascadeWarehouse = async (
+      typeValue,
+      warehouseName,
+      creditValue
+    ) => {
+      const current = await query(
+        `SELECT id, balance, credit FROM warehouse_balance_sheets WHERE type = $1 AND sale_sheet_id = $2`,
+        [typeValue, id]
       );
-    }
 
-    // ===== WAREHOUSE BALANCE UPDATE =====
+      if (current.rowCount > 0) {
+        const prevCredit = parseNumber(current.rows[0].credit);
+        const prevBalance = parseNumber(current.rows[0].balance);
+        const newBalance = prevBalance - prevCredit + creditValue;
+
+        await query(
+          `UPDATE warehouse_balance_sheets SET date = $1, details = $2, debit = $3, credit = $4, balance = $5 WHERE id = $6`,
+          [
+            currentDate,
+            warehouseName,
+            0,
+            creditValue,
+            newBalance,
+            current.rows[0].id,
+          ]
+        );
+
+        // Cascade future rows
+        const futureRows = await query(
+          `SELECT id, credit, debit FROM warehouse_balance_sheets WHERE type = $1 AND sale_sheet_id > $2 ORDER BY sale_sheet_id ASC`,
+          [typeValue, id]
+        );
+
+        let runningBalance = newBalance;
+        for (const row of futureRows.rows) {
+          runningBalance += parseNumber(row.credit) - parseNumber(row.debit);
+          await query(
+            `UPDATE warehouse_balance_sheets SET balance = $1 WHERE id = $2`,
+            [runningBalance, row.id]
+          );
+        }
+      }
+    };
+
     for (const item of parsedStock) {
       const creditValue = item.cases * cost_price_per_case;
-
-      const warehouseRow = await query(
-        `SELECT id, balance, credit FROM warehouse_balance_sheets WHERE type = $1 AND sale_sheet_id = $2`,
-        [item.warehouse_name, id]
+      await updateAndCascadeWarehouse(
+        item.warehouse_name,
+        item.warehouse_name,
+        creditValue
       );
-      if (warehouseRow.rowCount > 0) {
-        const prevCredit = parseNumber(warehouseRow.rows[0].credit);
-        const prevBalance = parseNumber(warehouseRow.rows[0].balance);
-        const newBalance = prevBalance - prevCredit + creditValue;
-
-        await query(
-          `UPDATE warehouse_balance_sheets SET date = $1, details = $2, debit = $3, credit = $4, balance = $5 WHERE id = $6`,
-          [
-            currentDate,
-            "Update",
-            0,
-            creditValue,
-            newBalance,
-            warehouseRow.rows[0].id,
-          ]
-        );
-      }
-
-      const allWarehouseRow = await query(
-        `SELECT id, balance, credit FROM warehouse_balance_sheets WHERE type = 'all' AND sale_sheet_id = $1`,
-        [id]
-      );
-      if (allWarehouseRow.rowCount > 0) {
-        const prevCredit = parseNumber(allWarehouseRow.rows[0].credit);
-        const prevBalance = parseNumber(allWarehouseRow.rows[0].balance);
-        const newBalance = prevBalance - prevCredit + creditValue;
-
-        await query(
-          `UPDATE warehouse_balance_sheets SET date = $1, details = $2, debit = $3, credit = $4, balance = $5 WHERE id = $6`,
-          [
-            currentDate,
-            item.warehouse_name,
-            0,
-            creditValue,
-            newBalance,
-            allWarehouseRow.rows[0].id,
-          ]
-        );
-      }
+      await updateAndCascadeWarehouse("all", item.warehouse_name, creditValue);
     }
 
     res.json({
-      message: "Sale sheet updated successfully",
+      message: "Sale sheet updated successfully with cascading balances",
       data: result.rows[0],
     });
   } catch (err) {
@@ -433,7 +458,6 @@ export const updateSaleSheet = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
-
 
 // delete sale_sheet
 export const deleteSaleSheet = async (req, res) => {
@@ -486,10 +510,10 @@ export const getSpecificSaleSheet = async (req, res) => {
 // get sale_sheets by specific shop_id
 export const getSaleSheetByShopId = async (req, res) => {
   const { shop_id } = req.params;
-  const { sale_date } = req.query; // Get sale_date from query params
+  const { sale_date, latest } = req.query;
 
   try {
-    // Check if the shop exists
+    // ✅ Check if the shop exists
     const shop = await query(`SELECT * FROM shops WHERE shop_id = $1`, [
       shop_id,
     ]);
@@ -501,20 +525,40 @@ export const getSaleSheetByShopId = async (req, res) => {
     let sale_sheets;
 
     if (sale_date) {
-      // Fetch sale sheets for specific shop_id and sale_date
+      // ✅ If sale_date is provided, fetch for that date
       sale_sheets = await query(
         `SELECT * FROM sale_sheets WHERE shop_id = $1 AND sale_date = $2`,
         [shop_id, sale_date]
       );
+    } else if (latest === "true") {
+      // ✅ If latest=true, find the latest date for this shop
+      const latestDateRes = await query(
+        `SELECT MAX(sale_date) as latest_date FROM sale_sheets WHERE shop_id = $1`,
+        [shop_id]
+      );
+
+      const latestDate = latestDateRes.rows[0]?.latest_date;
+
+      if (!latestDate) {
+        return res
+          .status(404)
+          .json({ message: "No sale sheets found for this shop" });
+      }
+
+      // ✅ Fetch all sale sheets for that latest date
+      sale_sheets = await query(
+        `SELECT * FROM sale_sheets WHERE shop_id = $1 AND sale_date = $2`,
+        [shop_id, latestDate]
+      );
     } else {
-      // Fetch all sale sheets for the shop_id
+      // ✅ If neither sale_date nor latest, fetch all
       sale_sheets = await query(
         `SELECT * FROM sale_sheets WHERE shop_id = $1`,
         [shop_id]
       );
     }
 
-    res.status(200).json(sale_sheets.rows);
+    res.status(200).json(sale_sheets.rows.reverse());
   } catch (error) {
     console.error("Error in getSaleSheetByShopId:", error.message);
     res.status(500).json({ error: error.message });

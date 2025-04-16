@@ -13,32 +13,15 @@ export const addPayment = async (req, res) => {
   } = req.body;
 
   try {
-    // Check if user exists
     const user = await query(`SELECT * FROM users WHERE id = $1`, [user_id]);
+    if (user.rowCount === 0) return res.status(404).json({ success: false, error: "User not found" });
 
-    if (user.rowCount === 0) {
-      return res.status(404).json({success:false, error: "User not found" });
-    }
-
-    // Check if shop_id matches liquor_type
     if (shop_id) {
-      const shop = await query(
-        `SELECT liquor_type FROM shops WHERE shop_id = $1`,
-        [shop_id]
-      );
-
-      if (shop.rowCount === 0) {
-        return res.status(404).json({success:false,error: "Shop not found" });
-      }
-
-      if (shop.rows[0].liquor_type !== liquor_type) {
-        return res
-          .status(400)
-          .json({success:false, error: "Shop ID does not match liquor type" });
-      }
+      const shop = await query(`SELECT liquor_type FROM shops WHERE shop_id = $1`, [shop_id]);
+      if (shop.rowCount === 0) return res.status(404).json({ success: false, error: "Shop not found" });
+      if (shop.rows[0].liquor_type !== liquor_type) return res.status(400).json({ success: false, error: "Shop ID does not match liquor type" });
     }
 
-    // Insert warehouse payment record
     const payment = await query(
       `INSERT INTO warehouse_payments (user_id, warehouse_name, bill_id, brand, cases, amount, shop_id, liquor_type)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -46,84 +29,131 @@ export const addPayment = async (req, res) => {
       [user_id, warehouse_name, bill_id, brand, cases, amount, shop_id, liquor_type]
     );
 
+    const paymentId = payment.rows[0].id;
     const currentDate = new Date().toISOString().split("T")[0];
 
-    // Function to update balance in balance_sheets
     const updateBalance = async (type) => {
-      try {
-        // Fetch correct last balance
-        const prevBalanceResult = await query(
-          `SELECT balance FROM balance_sheets 
-           WHERE type = $1 
-           ORDER BY id DESC 
-           LIMIT 1`,
-          [type]
-        );
+      const prev = await query(
+        `SELECT balance FROM balance_sheets WHERE type = $1 ORDER BY id DESC LIMIT 1`,
+        [type]
+      );
+      const previousBalance = prev.rows.length > 0 ? Number(prev.rows[0].balance) : 0;
+      const newBalance = previousBalance - amount;
 
-        const previousBalance = prevBalanceResult.rows.length > 0 ? Number(prevBalanceResult.rows[0].balance) : 0;
-        const newBalance = previousBalance - amount;
-
-        // Insert new balance entry
-        await query(
-          `INSERT INTO balance_sheets (type, date, details, debit, credit, balance)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [type, currentDate, `Warehouse Payment`, amount, 0, newBalance]
-        );
-
-        console.log(`✅ Updated balance_sheets: ${type} | Previous Balance: ${previousBalance} | New Balance: ${newBalance}`);
-      } catch (error) {
-        console.error(`❌ Error updating balance_sheets for ${type}:`, error);
-      }
+      await query(
+        `INSERT INTO balance_sheets (type, date, details, debit, credit, balance, warehouse_payment_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [type, currentDate, "Warehouse Payment", amount, 0, newBalance, paymentId]
+      );
     };
 
-    // Function to update balance in warehouse_balance_sheets
     const updateWarehouseBalance = async (type) => {
-      try {
-        const prevBalanceResult = await query(
-          `SELECT balance FROM warehouse_balance_sheets 
-           WHERE type = $1 
-           ORDER BY id DESC 
-           LIMIT 1`,
-          [type]
-        );
+      const prev = await query(
+        `SELECT balance FROM warehouse_balance_sheets WHERE type = $1 ORDER BY id DESC LIMIT 1`,
+        [type]
+      );
+      const previousBalance = prev.rows.length > 0 ? Number(prev.rows[0].balance) : 0;
+      const newBalance = previousBalance - amount;
 
-        const previousBalance = prevBalanceResult.rows.length > 0 ? Number(prevBalanceResult.rows[0].balance) : 0;
-        const newBalance = previousBalance - amount;
-
-        await query(
-          `INSERT INTO warehouse_balance_sheets (type, date, details, debit, credit, balance)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [type, currentDate, `Warehouse Payment`, amount, 0, newBalance]
-        );
-
-        console.log(`✅ Updated warehouse_balance_sheets: ${type} | Previous Balance: ${previousBalance} | New Balance: ${newBalance}`);
-      } catch (error) {
-        console.error(`❌ Error updating warehouse_balance_sheets for ${type}:`, error);
-      }
+      await query(
+        `INSERT INTO warehouse_balance_sheets (type, date, details, debit, credit, balance, warehouse_payment_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [type, currentDate, "Warehouse Payment", amount, 0, newBalance, paymentId]
+      );
     };
 
-    // Deduct from warehouse balance
     await updateWarehouseBalance(warehouse_name);
     await updateWarehouseBalance("all");
+    if (shop_id) await updateBalance(shop_id);
+    await updateBalance("all");
 
-    // Deduct from shop balance if shop_id exists
-    if (shop_id) {
-      await updateBalance(shop_id);
-    }
-
-    // ✅ FIX: Ensure "all" in balance_sheets updates correctly
-    await updateBalance("all"); 
-
-    res.status(200).json({
-      success:true,
-      message: "Payment recorded successfully",
-      data: payment.rows[0],
-    });
+    res.status(200).json({ success: true, message: "Payment recorded successfully", data: payment.rows[0] });
 
   } catch (error) {
-    res.status(500).json({success:false, error: error.message });
-    console.log("Error in addPayment controller:", error);
+    console.error("Error in addPayment:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
+
+
+export const updatePayment = async (req, res) => {
+  const { id } = req.params;
+  const { amount, brand, cases } = req.body;
+
+  try {
+    const paymentRes = await query(`SELECT * FROM warehouse_payments WHERE id = $1`, [id]);
+    if (paymentRes.rowCount === 0) {
+      return res.status(404).json({ success: false, error: "Payment not found" });
+    }
+
+    const oldPayment = paymentRes.rows[0];
+    const difference = amount - oldPayment.amount;
+
+    // ✅ Update the warehouse_payment record
+    await query(
+      `UPDATE warehouse_payments 
+       SET amount = COALESCE($1, amount), brand = COALESCE($2, brand), cases = COALESCE($3, cases)
+       WHERE id = $4`,
+      [amount, brand, cases, id]
+    );
+
+    // 🔁 Update balance_sheets and warehouse_balance_sheets
+    const updateBalances = async (tableName) => {
+      const relatedRes = await query(
+        `SELECT * FROM ${tableName} 
+         WHERE warehouse_payment_id = $1`,
+        [id]
+      );
+
+      const relatedRows = relatedRes.rows;
+
+      for (const row of relatedRows) {
+        const type = row.type;
+        const rowId = row.id;
+
+        // ✅ First update the current row’s debit
+        await query(
+          `UPDATE ${tableName}
+           SET debit = $1
+           WHERE id = $2`,
+          [amount, rowId]
+        );
+
+        // 🔁 Get all rows of this type in order (ledger-style)
+        const ledgerRes = await query(
+          `SELECT * FROM ${tableName}
+           WHERE type = $1
+           ORDER BY id ASC`,
+          [type]
+        );
+
+        let runningBalance = 0;
+
+        for (const ledgerRow of ledgerRes.rows) {
+          const credit = Number(ledgerRow.credit) || 0;
+          const debit = ledgerRow.id === rowId ? Number(amount) : Number(ledgerRow.debit) || 0;
+
+          runningBalance += credit - debit;
+
+          await query(
+            `UPDATE ${tableName}
+             SET balance = $1
+             WHERE id = $2`,
+            [runningBalance, ledgerRow.id]
+          );
+        }
+      }
+    };
+
+    await updateBalances("balance_sheets");
+    await updateBalances("warehouse_balance_sheets");
+
+    res.status(200).json({ success: true, message: "Payment and balances updated successfully" });
+
+  } catch (error) {
+    console.error("Error in updatePayment:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
 
