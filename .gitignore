@@ -37,6 +37,9 @@ local.properties
 !debug.keystore
 .kotlin/
 
+.history/
+
+
 # node.js
 #
 node_modules/
