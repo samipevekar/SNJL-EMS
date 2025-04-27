@@ -12,13 +12,13 @@ import attedanceRoutes from './routes/attendanceRoutes.js';
 import balanceSheetRoutes from './routes/balanceSheetRoutes.js';
 import stockIncrementRoutes from './routes/stockIncrementRoutes.js';
 import dotenv from 'dotenv';
-import serverless from 'serverless-http'; // 👈 Add this
-
 dotenv.config();
 
 const app = express();
 
 app.use(express.json({ limit: '10mb' }));
+
+const port = process.env.PORT || 4000;
 
 query("SELECT NOW()")
   .then(res => console.log("Database Time:", res.rows[0]))
@@ -40,11 +40,6 @@ app.use("/api/attendance", attedanceRoutes);
 app.use("/api/balance-sheet", balanceSheetRoutes);
 app.use("/api/stock-increment", stockIncrementRoutes);
 
-// Remove app.listen()
-if (process.env.NODE_ENV !== "production") {
-  app.listen(4000, () => {
-    console.log("Server running locally on port 4000");
-  });
-}
-
-export const handler = serverless(app); // 👈 Add this at the end
+app.listen(port, () => {
+  console.log("Server running locally on port 4000");
+});
