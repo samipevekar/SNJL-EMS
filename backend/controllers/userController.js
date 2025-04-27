@@ -20,46 +20,54 @@ async function validateShops(shopIds) {
 // Register New User (Super User can create managers & users, Manager can create only users)
 export const registerUser = async (req, res) => {
   try {
-    const { name, email, password, role,assigned_shops,image } = req.body;
+    const { name, email, password, role,assigned_shops, image } = req.body;
     const userId = req.user?.id
     const roles = req.user?.role
     console.log(userId,roles)
     
     if (!name || !email || !password || !role) {
-      return res.status(400).json({ error: 'Name, email, password, and role are required.' });
+      return res.status(400).json({success:false, error: 'Name, email, password, and role are required.' });
     }
 
     if(password.length < 6){
-      return res.status(400).json({ error: 'Password must be at least 6 characters'})
+      return res.status(400).json({success:false, error: 'Password must be at least 6 characters'})
+    }
+
+    if(role === "user" && assigned_shops.length > 1){
+      return res.status(400).json({success:false, error: 'Users can only be assigned to one shop'})
+    }
+
+    if((role === "user" || role === "manager") && assigned_shops.length === 0 ){
+      return res.status(400).json({ success: false, error: 'Assigned shop is required'})
     }
 
     // Fetch the role of the requester
     const adminCheck = await query('SELECT role FROM users WHERE id = $1', [userId]);
 
     if (userId && adminCheck.rows.length === 0) {
-      return res.status(403).json({ error: 'Unauthorized request.' });
+      return res.status(403).json({success:false, error: 'Unauthorized request.' });
     }
 
     const requesterRole = adminCheck.rows[0]?.role;
 
     // Super User can create managers and users, Manager can only create users
     if (userId && requesterRole === 'manager' && role !== 'user') {
-      return res.status(403).json({ error: 'Managers can only create users.' });
+      return res.status(403).json({success:false, error: 'Managers can only create users.' });
     }
 
     if (userId && requesterRole !== 'super_user' && requesterRole !== 'manager') {
-      return res.status(403).json({ error: 'Only super users and managers can create users.' });
+      return res.status(403).json({success:false, error: 'Only super users and managers can create users.' });
     }
 
     // Check if email already exists
     const userExists = await query('SELECT id FROM users WHERE email = $1', [email]);
     if (userExists.rows.length > 0) {
-      return res.status(400).json({ error: 'Email is already registered.' });
+      return res.status(400).json({success:false, error: 'Email is already registered.' });
     }
 
     // check assigned shops exists
     if (assigned_shops && !(await validateShops(assigned_shops))) {
-      return res.status(400).json({ error: 'One or more assigned shops do not exist.' });
+      return res.status(400).json({success:false, error: 'One or more assigned shops do not exist.' });
     }
 
     // Hash password
@@ -77,10 +85,10 @@ export const registerUser = async (req, res) => {
       [name, email, hashedPassword, role, faceEncoding,assigned_shops]
     );
 
-    res.status(201).json({ message: 'User registered successfully', user: result.rows[0] });
+    res.status(201).json({success:true, message: 'User registered successfully', user: result.rows[0] });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Server error during user registration' });
+    res.status(500).json({success:false, error: 'Server error during user registration' });
   }
 };
 
@@ -125,19 +133,23 @@ export const editUser = async (req, res) => {
     const { userId } = req.params; // User ID to be edited
     const { name, email, password, role, assigned_shops } = req.body;
     const requesterId = req.user?.id; // Logged-in user ID
+
     const requesterRole = req.user?.role; // Logged-in user role
 
-    console.log(`Requester: ${requesterId} (${requesterRole}) wants to edit User: ${userId}`);
 
     if (!requesterId) {
-      return res.status(403).json({ error: 'Unauthorized request.' });
+      return res.status(403).json({success:false, error: 'Unauthorized request.' });
+    }
+
+    if(role === "user" && assigned_shops.length > 1){
+      return res.status(400).json({success:false, error: 'Users can only be assigned to one shop'})
     }
 
     // Fetch user to be edited
     const userToEdit = await query('SELECT id, role FROM users WHERE id = $1', [userId]);
 
     if (userToEdit.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found.' });
+      return res.status(404).json({success:false, error: 'User not found.' });
     }
 
     const targetUser = userToEdit.rows[0];
@@ -145,36 +157,36 @@ export const editUser = async (req, res) => {
     // Permission Logic
     if (requesterId !== targetUser.id) {
       if (requesterRole === 'manager' && (targetUser.role === 'manager' || targetUser.role === 'super_user')) {
-        return res.status(403).json({ error: 'Managers can only edit users and themselves.' });
+        return res.status(403).json({success:false, error: 'Managers can only edit users and themselves.' });
       }
 
       if (requesterRole === 'user') {
-        return res.status(403).json({ error: 'Users can only edit their own profile.' });
+        return res.status(403).json({success:false, error: 'Users can only edit their own profile.' });
       }
 
       if (requesterRole !== 'super_user' && requesterRole !== 'manager') {
-        return res.status(403).json({ error: 'Unauthorized access.' });
+        return res.status(403).json({success:false, error: 'Unauthorized access.' });
       }
     }
 
     // Role change restrictions
     if (role) {
-      if (requesterId === targetUser.id) {
-        return res.status(403).json({ error: 'You cannot change your own role.' });
+      if (requesterId === 'super_user') {
+        return res.status(403).json({success:false, error: 'You cannot change your own role.' });
       }
 
       if (requesterRole === 'manager' && role !== 'user') {
-        return res.status(403).json({ error: 'Managers can only assign the user role.' });
+        return res.status(403).json({success:false, error: 'Managers can only assign the user role.' });
       }
 
       if (requesterRole !== 'super_user') {
-        return res.status(403).json({ error: 'Only super users can change roles.' });
+        return res.status(403).json({success:false, error: 'Only super users can change roles.' });
       }
     }
 
     // check assigned shop exists
     if (assigned_shops && !(await validateShops(assigned_shops))) {
-      return res.status(400).json({ error: 'One or more assigned shops do not exist.' });
+      return res.status(400).json({success:false, error: 'One or more assigned shops do not exist.' });
     }
 
     // If password is being updated, hash it
@@ -195,7 +207,7 @@ export const editUser = async (req, res) => {
       [name, email, hashedPassword || null, role || targetUser.role, assigned_shops,userId]
     );
 
-    res.json({ message: 'User updated successfully', user: updatedUser.rows[0] });
+    res.json({success:true, message: 'User updated successfully', user: updatedUser.rows[0] });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Server error during user update' });
@@ -218,6 +230,56 @@ export const getMe = async (req,res) =>{
     res.status(500).json({ error: 'Server error during user update' });
   }
 }
+
+// Get all users (filter by role if provided)
+export const getUsers = async (req, res) => {
+  try {
+    const { role } = req.query;
+    const requesterRole = req.user?.role;
+
+    // Basic permission check
+    if (requesterRole !== 'super_user' && requesterRole !== 'manager') {
+      return res.status(403).json({ error: 'Unauthorized access' });
+    }
+
+    let queryText = 'SELECT id, name, email, role, assigned_shops FROM users';
+    const queryParams = [];
+    
+
+    // Managers can only see users, not other managers or super users
+    if (requesterRole === 'manager') {
+      queryText += ' WHERE role = $1 ';
+      queryParams.push('user');
+    } else if (role) {
+      queryText += ' WHERE role = $1 ';
+      queryParams.push(role);
+    } 
+
+    if(queryParams.length==0){
+      queryText = 'SELECT id, name, email, role, assigned_shops FROM users ORDER BY id'
+    }
+
+    const result = await query(queryText, queryParams.length > 0 ? queryParams : null);
+
+    res.json({ 
+      success: true,
+      users: result.rows 
+    });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Server error while fetching users' });
+  }
+};
+
+
+
+
+
+
+
+
+
+
 
 // Attendance Route
 export const attendance = async (req, res) => {

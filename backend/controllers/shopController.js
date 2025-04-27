@@ -10,6 +10,7 @@ export const createShop = async (req, res) => {
     mgq_q2,
     mgq_q3,
     mgq_q4,
+    canteen
   } = req.body;
 
   try {
@@ -46,16 +47,105 @@ export const createShop = async (req, res) => {
     // Insert shop data
     const shop = await query(
       `
-      INSERT INTO shops (shop_id, shop_name, mgq, yearly_mgq, monthly_mgq, liquor_type,mgq_q1,mgq_q2,mgq_q3,mgq_q4)
-      VALUES ($1, $2, $3, $4, $5, $6,$7,$8,$9,$10) RETURNING *;
+      INSERT INTO shops (shop_id, shop_name, mgq, yearly_mgq, monthly_mgq, liquor_type,mgq_q1,mgq_q2,mgq_q3,mgq_q4,canteen)
+      VALUES ($1, $2, $3, $4, $5, $6,$7,$8,$9,$10,$11) RETURNING *;
       `,
-      [shop_id, shop_name, final_mgq, yearly_mgq, monthly_mgq, liquor_type,mgq_q1,mgq_q2,mgq_q3,mgq_q4]
+      [shop_id, shop_name, final_mgq, yearly_mgq, monthly_mgq, liquor_type,mgq_q1,mgq_q2,mgq_q3,mgq_q4,canteen]
     );
 
     res.status(200).json(shop.rows[0]);
   } catch (error) {
     console.error("Error in createShop controller:", error);
     res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+// edit shop
+export const editShop = async (req, res) => {
+  const {
+    shop_id,
+    shop_name,
+    mgq,
+    liquor_type,
+    mgq_q1,
+    mgq_q2,
+    mgq_q3,
+    mgq_q4,
+    canteen
+  } = req.body;
+
+  const {id} = req.params
+
+  try {
+    // Check if shop exists
+    const existingShop = await query(`SELECT * FROM shops WHERE id = $1`, [id]);
+    if (existingShop.rowCount === 0) {
+      return res.status(404).json({ message: "Shop not found." });
+    }
+
+    const current = existingShop.rows[0];
+
+    // If liquor_type is changing to 'foreign', validate all quarters
+    const newLiquorType = liquor_type || current.liquor_type;
+
+    if (
+      newLiquorType === "foreign" &&
+      [mgq_q1, mgq_q2, mgq_q3, mgq_q4].some((val, i) => val === undefined && current[`mgq_q${i + 1}`] === null)
+    ) {
+      return res.status(400).json({ message: "Enter all MGQ values for foreign liquor" });
+    }
+
+    if (newLiquorType === "country" && mgq === undefined && current.mgq === null) {
+      return res.status(400).json({ message: "Enter MGQ for country liquor" });
+    }
+
+    // Calculate mgqs if liquor_type is country
+    const final_mgq = newLiquorType === "country" ? (mgq ?? current.mgq) : 0;
+    const yearly_mgq = newLiquorType === "country" ? Math.round(final_mgq / 9) : 0;
+    const monthly_mgq = newLiquorType === "country" ? Math.round(final_mgq / 9 / 12) : 0;
+
+    // Update with COALESCE to keep existing values if not passed
+    const updated = await query(
+      `
+      UPDATE shops SET
+        shop_name = COALESCE($1, shop_name),
+        mgq = COALESCE($2, mgq),
+        yearly_mgq = COALESCE($3, yearly_mgq),
+        monthly_mgq = COALESCE($4, monthly_mgq),
+        liquor_type = COALESCE($5, liquor_type),
+        mgq_q1 = COALESCE($6, mgq_q1),
+        mgq_q2 = COALESCE($7, mgq_q2),
+        mgq_q3 = COALESCE($8, mgq_q3),
+        mgq_q4 = COALESCE($9, mgq_q4),
+        canteen = COALESCE($10, canteen),
+        shop_id = COALESCE($11, shop_id)
+      WHERE id = $12
+      RETURNING *;
+      `,
+      [
+        shop_name,
+        newLiquorType === "country" ? final_mgq : null,
+        newLiquorType === "country" ? yearly_mgq : null,
+        newLiquorType === "country" ? monthly_mgq : null,
+        liquor_type,
+        mgq_q1,
+        mgq_q2,
+        mgq_q3,
+        mgq_q4,
+        canteen,
+        shop_id,
+        id
+      ]
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Shop updated successfully.",
+      data: updated.rows[0],
+    });
+  } catch (error) {
+    console.error("Error in editShop controller:", error);
+    res.status(500).json({ message: "Internal Server Error", error: error.message });
   }
 };
 
@@ -91,7 +181,7 @@ export const deleteShop = async (req, res) => {
   }
 };
 
-// get sale_sheets of a shop
+// get all shop
 export const getAllShops = async (req, res) => {
   try {
     const shops = await query(
@@ -105,6 +195,28 @@ export const getAllShops = async (req, res) => {
     }
 
     res.status(200).json(shops.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+    console.log("Error in getAllShops controller", error);
+  }
+};
+
+export const getShopById = async (req, res) => {
+  const {shop_id} = req.params
+  try {
+    const shops = await query(
+      `
+            SELECT * FROM shops
+            WHERE shop_id = $1
+            `,
+            [shop_id]
+    );
+
+    if (shops.rowCount === 0) {
+      return res.status(404).json({ message: "No shop registered" });
+    }
+
+    res.status(200).json(shops.rows[0]);
   } catch (error) {
     res.status(500).json({ error: error.message });
     console.log("Error in getAllShops controller", error);
@@ -140,39 +252,22 @@ export const getAllExpensesOfShop = async (req, res) => {
       );
     }
 
-    let totalExpense = 0;
-    let latestTotalExpense = 0;
-
-    // Map expenses with their corresponding date
-    const mappedExpenses = expenses.rows.map((row, index) => {
-      let subtotal = 0;
-      if (row.expenses && row.expenses.length > 0) {
-        row.expenses.forEach(exp => {
-          totalExpense += exp.amount || 0;
-          subtotal += exp.amount || 0;
-        });
-      }
-
-      // Set latestTotalExpense for the first row (latest)
-      if (index === 0) {
-        latestTotalExpense = subtotal;
-      }
-
+    // Transform expenses into the desired format
+    const formattedExpenses = expenses.rows.flatMap(row => {
+      if (!row.expenses || row.expenses.length === 0) return [];
+      
       // Format date as DD-MM-YYYY
       const dateObj = new Date(row.sale_date);
       const formattedDate = `${String(dateObj.getDate()).padStart(2, '0')}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${dateObj.getFullYear()}`;
-
-      return {
+      
+      return row.expenses.map(exp => ({
         sale_date: formattedDate,
-        expenses: row.expenses || []
-      };
+        amount: exp.amount || 0,
+        message: exp.message || ''
+      }));
     });
 
-    res.status(200).json({
-      totalExpense,
-      latestTotalExpense,
-      expenses: mappedExpenses
-    });
+    res.status(200).json(formattedExpenses);
 
   } catch (error) {
     console.error("Error in getAllExpensesOfShop:", error.message);

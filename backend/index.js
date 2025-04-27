@@ -10,6 +10,7 @@ import brandRoutes from './routes/brandRoutes.js'
 import indentRoutes from './routes/indentformationRoutes.js'
 import attedanceRoutes from './routes/attendanceRoutes.js'
 import balanceSheetRoutes from './routes/balanceSheetRoutes.js'
+import stockIncrementRoutes from './routes/stockIncrementRoutes.js'
 import dotenv from 'dotenv'
 dotenv.config()
 
@@ -33,6 +34,7 @@ app.use("/api/brand", brandRoutes)
 app.use("/api/indent", indentRoutes)
 app.use("/api/attendance", attedanceRoutes)
 app.use("/api/balance-sheet", balanceSheetRoutes)
+app.use("/api/stock-increment", stockIncrementRoutes)
 
 app.listen(4000,()=>{
     console.log('server is running on port 4000')

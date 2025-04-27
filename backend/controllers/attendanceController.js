@@ -84,6 +84,7 @@ export const markAttendance = async (req, res) => {
 
 
 // Get attendance by shop with optional month & year filters
+
 export const getAttendanceByShop = async (req, res) => {
   try {
     const { shop_id } = req.params;
@@ -199,25 +200,22 @@ export const getAttendanceByShop = async (req, res) => {
     const response = users.map(user => {
       const attendanceData = attendanceMap.get(user.id) || { count: 0, present_dates: [] };
       
-      let absent_dates = [];
-      if (dateFilterApplied) {
-        if (month && year) {
-          // For month+year filter, only include dates up to current date
-          absent_dates = allDatesInPeriod.filter(date => 
-            !attendanceData.present_dates.includes(date)
-          );
-        } else if (year) {
-          // For year-only filter, include all dates up to current date
-          absent_dates = allDatesInPeriod.filter(date => 
-            !attendanceData.present_dates.includes(date)
-          );
-        }
-      }
-
-      // Format dates to YYYY-MM-DD
+      // Format present dates to YYYY-MM-DD
       const formattedPresentDates = attendanceData.present_dates.map(date => {
         return new Date(date).toISOString().split('T')[0];
       });
+
+      let absent_dates = [];
+      if (dateFilterApplied) {
+        // Only calculate absent dates if we have a date filter
+        // First, ensure we're comparing dates in the same format
+        const presentDatesSet = new Set(formattedPresentDates);
+        
+        // Filter all dates in period to find those not in present dates
+        absent_dates = allDatesInPeriod.filter(date => 
+          !presentDatesSet.has(date)
+        );
+      }
 
       return {
         user_id: user.id,

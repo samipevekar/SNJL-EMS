@@ -11,6 +11,7 @@ CREATE TABLE shops (
     mgq_q2 INTEGER DEFAULT 0,  
     mgq_q3 INTEGER DEFAULT 0,  
     mgq_q4 INTEGER DEFAULT 0,
+    canteen INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -52,6 +53,20 @@ CREATE TABLE brands (
     profit NUMERIC(10, 2) GENERATED ALWAYS AS (mrp_per_case - cost_price_per_case) STORED
 );
 
+-- stock_increments table
+CREATE TABLE stock_increments (
+    id SERIAL PRIMARY KEY,
+    shop_id INTEGER REFERENCES shops(shop_id) ON DELETE CASCADE,
+    bill_id INTEGER NOT NULL,
+    brand_name VARCHAR(255) NOT NULL,
+    volume_ml INTEGER NOT NULL,
+    warehouse_name VARCHAR(255) NOT NULL,
+    cases INTEGER NOT NULL,
+    pieces INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 
 
 -- daily_sales_summary table
@@ -66,22 +81,15 @@ CREATE TABLE daily_sales_summary (
 
 --indent_information table  
 CREATE TABLE indent_information (
-    indent_id SERIAL PRIMARY KEY,  -- Unique identifier for each indent entry
+    indent_id SERIAL PRIMARY KEY,
     shop_id INTEGER REFERENCES shops(shop_id) ON DELETE CASCADE,
     shop_name VARCHAR(250) NOT NULL,
-    brand JSONB NOT NULL,  -- Stores multiple brands with cases, duty, cost price
+    brand JSONB NOT NULL,
     total_cases INTEGER NOT NULL,
-    total_duty INTEGER NOT NULL,
-    total_cost_price INTEGER NOT NULL  -- Ensures precision in cost price calculations
+    total_duty NUMERIC(10, 2) NOT NULL,        -- float value ke liye
+    total_cost_price NUMERIC(10, 2) NOT NULL,  -- float value ke liye
     indent_date DATE NOT NULL DEFAULT CURRENT_DATE
 );
-
--- todo
--- manageral_expenses
--- warehouse payment add
--- indent formation // sirf foreign or beer ke liye 
--- pdf generation
-
 
 
 -- w_stock table
@@ -155,7 +163,8 @@ CREATE TABLE warehouse_balance_sheets (
     credit NUMERIC DEFAULT 0,
     balance NUMERIC DEFAULT 0,
     sale_sheet_id integer,
-    warehouse_payment_id INT REFERENCES warehouse_payments(id) ON DELETE SET NULL;
+    warehouse_payment_id INT REFERENCES warehouse_payments(id) ON DELETE SET NULL,
+    stock_increment_id INTEGER REFERENCES stock_increments(id) ON DELETE SET NULL;
 );
 
 

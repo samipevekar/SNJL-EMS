@@ -1,7 +1,9 @@
 import { query } from "../db/db.js"
 
 export const addExpense = async (req, res) => {
-    const { user_id, amount, message, shop_id, liquor_type } = req.body;
+    const { user_id, amount, message, shop_id } = req.body;
+
+    let liquor_type
   
     try {
       const user = await query(`SELECT * FROM users WHERE id = $1`, [user_id]);
@@ -10,6 +12,9 @@ export const addExpense = async (req, res) => {
       if (shop_id) {
         const shop = await query(`SELECT liquor_type FROM shops WHERE shop_id = $1`, [shop_id]);
         if (shop.rowCount === 0) return res.status(404).json({ success: false, error: "Shop not found" });
+        
+        liquor_type = shop.rows[0]?.liquor_type
+        
         if (shop.rows[0].liquor_type !== liquor_type) {
           return res.status(400).json({ success: false, error: "Shop ID does not match liquor type" });
         }
