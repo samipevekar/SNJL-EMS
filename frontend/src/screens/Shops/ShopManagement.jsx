@@ -139,6 +139,10 @@ const ShopManagement = () => {
         }
     };
 
+    if(status === 'loading'){
+        return <View style={{margin:'auto'}}><ActivityIndicator size={'large'} color={colors.primary}/></View> 
+    }
+
     return (
         <View style={styles.container}>
             <View style={styles.header}>

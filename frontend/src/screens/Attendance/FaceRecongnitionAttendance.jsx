@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
   header: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#343A40',
+    color: colors.primary,
     textAlign: 'center',
     marginVertical: 20,
   },
@@ -179,6 +179,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
+    position: 'relative', // Added for better border positioning
   },
   detected: {
     borderWidth: 4,
@@ -189,11 +190,13 @@ const styles = StyleSheet.create({
     borderColor: '#FF4444',
   },
   processing: {
-    borderColor: '#6C63FF',
+    borderWidth: 4,
+    borderColor: colors.secondary,
   },
   camera: {
     width: '100%',
     height: '100%',
+    position: 'absolute', // This ensures the camera fills the container
   },
   overlay: {
     position: 'absolute',

@@ -1,5 +1,5 @@
-import React, {useEffect, useState} from 'react';
-import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
+import React, {useEffect, useState, useCallback} from 'react';
+import {View, Text, TouchableOpacity, StyleSheet, RefreshControl} from 'react-native';
 import {ProgressBar} from 'react-native-paper';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import ExpensesTable from '../../components/ExpensesTable';
@@ -15,6 +15,7 @@ import {
 import {formatDate} from '../../utils/formatDate';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { selectUser } from '../../redux/slice/authSlice';
+import { ScrollView } from 'react-native-gesture-handler';
 
 const ShopDetails = ({route, navigation}) => {
   const {shop_id} = route.params;
@@ -26,6 +27,7 @@ const ShopDetails = ({route, navigation}) => {
   const [date, setDate] = useState(new Date());
   const [showPicker, setShowPicker] = useState(false);
   const [showExpense, setShowExpense] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [quotaData, setQuotaData] = useState({
     total: 0,
     remaining: 0,
@@ -41,6 +43,16 @@ const ShopDetails = ({route, navigation}) => {
     if (month >= 7 && month <= 9) return 3; // Q3: Jul-Sep
     return 4; // Q4: Oct-Dec
   };
+
+  // Fetch shop data
+  const fetchData = useCallback(async () => {
+    try {
+      await dispatch(getShopByIdAsync(shop_id));
+      await dispatch(getAllExpenseAsync({shop_id: shop_id}));
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    }
+  }, [dispatch, shop_id]);
 
   // Calculate quota based on liquor type
   useEffect(() => {
@@ -90,6 +102,13 @@ const ShopDetails = ({route, navigation}) => {
     }
   }, [shop]);
 
+  // Handle refresh
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+  }, [fetchData]);
+
   const onChange = (event, selectedDate) => {
     setShowPicker(false);
     if (event.type === 'dismissed') return;
@@ -110,16 +129,26 @@ const ShopDetails = ({route, navigation}) => {
     navigation.navigate('AttendanceDetails', {shop_id: shop_id});
   };
 
+  // Initial data load
   useEffect(() => {
-    dispatch(getShopByIdAsync(shop_id));
-    dispatch(getAllExpenseAsync({shop_id: shop_id}));
+    fetchData();
     return () => {
       dispatch(clearShop());
     };
   }, [shop_id]);
 
   return (
-    <View style={styles.container}>
+    <ScrollView 
+      style={styles.container}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={[colors.primary]}
+          tintColor={colors.primary}
+        />
+      }
+    >
       <Text style={styles.title}>{shop?.shop_name}</Text>
       <Text style={styles.subtitle}>
         Type:{' '}
@@ -192,7 +221,7 @@ const ShopDetails = ({route, navigation}) => {
           onChange={onChange}
         />
       )}
-    </View>
+    </ScrollView>
   );
 };
 
@@ -200,7 +229,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: colors.background,
+    backgroundColor: colors.background
   },
   title: {
     fontSize: 22,

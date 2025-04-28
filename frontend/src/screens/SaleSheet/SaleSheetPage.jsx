@@ -1,14 +1,13 @@
-// SaleSheetsPage.js
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback } from 'react';
 import { 
   StyleSheet, 
   Text, 
   View, 
   FlatList, 
   ActivityIndicator,
-  TouchableOpacity
+  TouchableOpacity,
+  RefreshControl
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import SaleSheetCard from '../../components/SaleSheetCard';
@@ -27,36 +26,26 @@ const SaleSheetsPage = ({ navigation }) => {
   const user = useSelector(selectUser);
   const saleSheets = useSelector(selectSaleSheets);
   const loading = useSelector(selectSaleSheetsLoading);
+  const [refreshing, setRefreshing] = useState(false);
+  const [totals, setTotals] = useState({
+    net_cash: 0,
+    cash_in_hand: 0,
+    upi: 0,
+    total_expenses: 0
+  });
   const shopId = user?.assigned_shops?.length > 0 ? user.assigned_shops[0] : null;
 
-  useFocusEffect(
-    useCallback(() => {
-      if (shopId) {
-        dispatch(fetchSaleSheetsAsync({ shop_id: shopId, latest: 'true' }));
-      }
-
-      return () => {
-        dispatch(clearSaleSheets());
-      };
-    }, [dispatch, shopId])
-  );
-
-  const handleAddNew = () => {
-    navigation.navigate('SaleSheetForm', { shop_id: shopId });
-  };
-
-  const getCumulativeTotals = () => {
+  const calculateTotals = useCallback((sheets) => {
     let net_cash = 0;
     let cash_in_hand = 0;
     let upi = 0;
     let total_expenses = 0;
   
-    saleSheets.forEach(sheet => {
+    sheets.forEach(sheet => {
       net_cash += Number(sheet.net_cash || 0);
       cash_in_hand += Number(sheet.cash_in_hand || 0);
       upi += Number(sheet.upi || 0);
   
-      // Sum of all expenses per sheet
       if (Array.isArray(sheet.expenses)) {
         sheet.expenses.forEach(expense => {
           total_expenses += Number(expense.amount || 0);
@@ -70,12 +59,44 @@ const SaleSheetsPage = ({ navigation }) => {
       upi,
       total_expenses
     };
-  };
-  
-  const { net_cash, cash_in_hand, upi, total_expenses } = getCumulativeTotals();
+  }, []);
 
+  const loadData = useCallback(async () => {
+    if (shopId) {
+      dispatch(fetchSaleSheetsAsync({ shop_id: shopId, latest: 'true' }));
+    }
+  }, [dispatch, shopId]);
 
-  if (loading) {
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+      return () => {
+        dispatch(clearSaleSheets());
+      };
+    }, [loadData, dispatch])
+  );
+
+  useEffect(() => {
+    if (saleSheets.length > 0) {
+      const newTotals = calculateTotals(saleSheets);
+      setTotals(newTotals);
+    } else {
+      setTotals({
+        net_cash: 0,
+        cash_in_hand: 0,
+        upi: 0,
+        total_expenses: 0
+      });
+    }
+  }, [saleSheets, calculateTotals]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  }, [loadData]);
+
+  if (loading && !refreshing) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -87,42 +108,37 @@ const SaleSheetsPage = ({ navigation }) => {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Sale Sheets</Text>
-        <Text style={styles.date}>{saleSheets[0]?.sale_date ? formatDateLeft(saleSheets[0]?.sale_date) : ''}</Text>
+        <Text style={styles.date}>
+          {saleSheets[0]?.sale_date ? formatDateLeft(saleSheets[0]?.sale_date) : ''}
+        </Text>
       </View>
 
       {/* Cumulative Summary */}
       {saleSheets.length > 0 && (
-  <View style={styles.summaryContainer}>
-    <Text style={styles.summaryTitle}>Cumulative Totals</Text>
-    <View style={styles.summaryRow}>
-      <Text style={styles.summaryLabel}>Net Cash:</Text>
-      <Text style={styles.summaryValue}>₹{net_cash.toFixed(2)}</Text>
-    </View>
-    <View style={styles.summaryRow}>
-      <Text style={styles.summaryLabel}>Cash Collected:</Text>
-      <Text style={styles.summaryValue}>₹{cash_in_hand.toFixed(2)}</Text>
-    </View>
-    <View style={styles.summaryRow}>
-      <Text style={styles.summaryLabel}>UPI:</Text>
-      <Text style={styles.summaryValue}>₹{upi.toFixed(2)}</Text>
-    </View>
-    <View style={styles.summaryRow}>
-      <Text style={styles.summaryLabel}>Expenses:</Text>
-      <Text style={styles.summaryValue}>₹{total_expenses.toFixed(2)}</Text>
-    </View>
-  </View>
-)}
-
+        <View style={styles.summaryContainer}>
+          <Text style={styles.summaryTitle}>Cumulative Totals</Text>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Net Cash:</Text>
+            <Text style={styles.summaryValue}>₹{totals.net_cash.toFixed(2)}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Cash Collected:</Text>
+            <Text style={styles.summaryValue}>₹{totals.cash_in_hand.toFixed(2)}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>UPI:</Text>
+            <Text style={styles.summaryValue}>₹{totals.upi.toFixed(2)}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Expenses:</Text>
+            <Text style={styles.summaryValue}>₹{totals.total_expenses.toFixed(2)}</Text>
+          </View>
+        </View>
+      )}
 
       {saleSheets.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No sale sheets found</Text>
-          {/* <TouchableOpacity 
-            style={styles.emptyButton} 
-            onPress={handleAddNew}
-          >
-            <Text style={styles.emptyButtonText}>Create First Sale Sheet</Text>
-          </TouchableOpacity> */}
         </View>
       ) : (
         <FlatList
@@ -131,9 +147,18 @@ const SaleSheetsPage = ({ navigation }) => {
           renderItem={({ item }) => <SaleSheetCard item={item} showEditButton={true} />}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
         />
       )}
-    </View>
+
+      </View>
   );
 };
 
@@ -155,38 +180,41 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: colors.white,
     borderBottomWidth: 1,
-    borderBottomColor: colors.secondary,
+    borderBottomColor: colors.grayLight,
   },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
     color: colors.textDark,
   },
-  date:{
-    fontSize:15,
-    fontWeight:'bold'
+  date: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: colors.primary,
   },
   summaryContainer: {
     backgroundColor: colors.white,
     padding: 16,
-    margin: 15,
+    margin: 16,
     borderRadius: 8,
     shadowColor: colors.black,
     shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 4,
-    // elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6
   },
   summaryTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 10,
+    marginBottom: 12,
     color: colors.textDark,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.grayLight,
+    paddingBottom: 8,
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginVertical: 4,
+    marginVertical: 6,
   },
   summaryLabel: {
     fontSize: 16,
@@ -194,34 +222,23 @@ const styles = StyleSheet.create({
   },
   summaryValue: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: colors.textDark,
   },
   listContent: {
     paddingBottom: 20,
+    paddingHorizontal: 5,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
   },
   emptyText: {
     fontSize: 16,
     color: colors.grayDark,
     marginBottom: 20,
     textAlign: 'center',
-  },
-  emptyButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 6,
-  },
-  emptyButtonText: {
-    color: colors.white,
-    fontWeight: 'bold',
-    fontSize: 16,
   },
 });
 

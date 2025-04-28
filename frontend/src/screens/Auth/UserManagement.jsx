@@ -252,7 +252,7 @@ const UserManagement = () => {
                     placeholder="Enter email"
                     keyboardType="email-address"
                     autoCapitalize="none"
-                    editable={!editMode}
+                    editable={true}
                   />
                   {errors.email && <Text style={styles.errorText}>{errors.email.message}</Text>}
                 </View>

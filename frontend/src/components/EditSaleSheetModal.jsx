@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, FlatList, Alert } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { updateSaleSheetAsync } from '../redux/slice/saleSheetSlice';
+import { selectSaleSheetStatus, updateSaleSheetAsync } from '../redux/slice/saleSheetSlice';
 import colors from '../theme/colors';
 
 const EditSaleSheetModal = ({ visible, onClose, saleSheet }) => {
@@ -11,6 +11,7 @@ const EditSaleSheetModal = ({ visible, onClose, saleSheet }) => {
   const [expenses, setExpenses] = useState([]);
   const [newExpense, setNewExpense] = useState({ message: '', amount: '' });
   const [expenseModalVisible, setExpenseModalVisible] = useState(false);
+  const loading = useSelector(selectSaleSheetStatus)
 
   useEffect(() => {
     if (saleSheet) {
@@ -146,7 +147,7 @@ const EditSaleSheetModal = ({ visible, onClose, saleSheet }) => {
             style={styles.submitButton} 
             onPress={handleUpdate}
           >
-            <Text style={styles.submitButtonText}>Update Sale Sheet</Text>
+            <Text style={styles.submitButtonText}>{loading === 'loading' ? "Updating..." : "Update Sale Sheet"}</Text>
           </TouchableOpacity>
         </View>
 

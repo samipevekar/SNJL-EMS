@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 10,
-    elevation: 3,
+    elevation: 5,
   },
   submitButtonText: {
     color: colors.white,

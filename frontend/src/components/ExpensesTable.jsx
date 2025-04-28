@@ -63,6 +63,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: 10,
     elevation: 0,
+    marginBottom:30
   },
   noExpensesContainer: {
     marginTop: 10,

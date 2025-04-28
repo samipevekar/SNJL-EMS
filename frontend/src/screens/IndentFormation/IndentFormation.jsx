@@ -24,7 +24,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import RNHTMLtoPDF from 'react-native-html-to-pdf';
 import Share from 'react-native-share';
-import { getBrandsAsync, selectBrands } from '../../redux/slice/brandSlice';
+import {getBrandsAsync, selectBrands} from '../../redux/slice/brandSlice';
 
 const IndentFormation = () => {
   const dispatch = useDispatch();
@@ -39,9 +39,10 @@ const IndentFormation = () => {
   const [brandModalVisible, setBrandModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentBrandIndex, setCurrentBrandIndex] = useState(0);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    dispatch(getBrandsAsync({type:'foreign'}));
+    dispatch(getBrandsAsync({type: 'foreign'}));
   }, []);
 
   const {
@@ -53,7 +54,7 @@ const IndentFormation = () => {
   } = useForm({
     defaultValues: {
       shop_id: user?.shop_id || '',
-      brand: [{brand_name: '', cases: '0', duty: '0', cost_price: '0'}],
+      brand: [{brand_name: '', cases: '', duty: '', cost_price: ''}],
     },
   });
 
@@ -75,7 +76,7 @@ const IndentFormation = () => {
         cost_price: Number(item.cost_price) || 0,
       })),
     };
-  
+
     dispatch(addIndentAsync(formattedData));
   };
 
@@ -83,7 +84,7 @@ const IndentFormation = () => {
     if (indentStatus === 'succeeded') {
       Alert.alert('Success', 'Indent added successfully!');
       setShowPreview(true);
-  
+
       setTimeout(() => {
         dispatch(resetIndentState());
       }, 3000);
@@ -106,18 +107,19 @@ const IndentFormation = () => {
   );
 
   const handleAddBrand = () => {
-    append({brand_name: '', cases: '0', duty: '0', cost_price: '0'});
+    append({brand_name: '', cases: '', duty: '', cost_price: ''});
   };
 
   const handleRemoveAllBrands = () => {
     setValue('brand', [
-      {brand_name: '', cases: '0', duty: '0', cost_price: '0'},
+      {brand_name: '', cases: '', duty: '', cost_price: ''},
     ]);
     setShopIdLocked(false);
     setShowPreview(false);
   };
 
   const generatePDF = async () => {
+    setLoading(true);
     const htmlContent = `
       <div style="padding: 24px; text-align: center; font-family: Arial, sans-serif;">
         <h1 style="text-align:center;">Indent Summary</h1>
@@ -142,7 +144,7 @@ const IndentFormation = () => {
                     <td style="padding: 8px;">${item.duty}</td>
                     <td style="padding: 8px;">${item.cost_price}</td>
                   </tr>
-                `
+                `,
               )
               .join('')}
             <tr>
@@ -155,28 +157,30 @@ const IndentFormation = () => {
         </table>
       </div>
     `;
-  
+
     try {
       const options = {
         html: htmlContent,
         fileName: `Indent_${shopId}_${Date.now()}`,
         directory: 'Documents',
       };
-  
+
       const file = await RNHTMLtoPDF.convert(options);
       await Share.open({
         url: `file://${file.filePath}`,
         type: 'application/pdf',
         title: 'Share Indent PDF',
       });
+      setLoading(false);
     } catch (err) {
       Alert.alert('Error', 'Failed to export PDF');
       console.error(err);
+      setLoading(false);
     }
   };
 
   const filteredBrands = brandOptions.filter(brand =>
-    brand.brand_name.toLowerCase().includes(searchQuery.toLowerCase())
+    brand.brand_name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   const renderBrandItem = ({item, index}) => (
@@ -190,14 +194,17 @@ const IndentFormation = () => {
             rules={{required: 'Brand name is required'}}
             render={({field: {value}}) => (
               <>
-                <TouchableOpacity 
-                  style={[styles.brandInput, errors.brand?.[index]?.brand_name && styles.errorInput]}
+                <TouchableOpacity
+                  style={[
+                    styles.brandInput,
+                    errors.brand?.[index]?.brand_name && styles.errorInput,
+                  ]}
                   onPress={() => {
                     setCurrentBrandIndex(index);
                     setBrandModalVisible(true);
-                  }}
-                >
-                  <Text style={value ? styles.pickerText : styles.placeholderText}>
+                  }}>
+                  <Text
+                    style={value ? styles.pickerText : styles.placeholderText}>
                     {value || 'Select Brand'}
                   </Text>
                   <Icon name="arrow-drop-down" size={24} color="#495057" />
@@ -223,7 +230,7 @@ const IndentFormation = () => {
             }}
             render={({field: {onChange, value}}) => (
               <TextInput
-                style={styles.input}
+                style={[styles.input, errors.brand && styles.errorInput]}
                 value={value}
                 onChangeText={onChange}
                 keyboardType="numeric"
@@ -251,7 +258,7 @@ const IndentFormation = () => {
             }}
             render={({field: {onChange, value}}) => (
               <TextInput
-                style={styles.input}
+                style={[styles.input, errors.brand && styles.errorInput]}
                 value={value}
                 onChangeText={onChange}
                 keyboardType="numeric"
@@ -277,7 +284,7 @@ const IndentFormation = () => {
             }}
             render={({field: {onChange, value}}) => (
               <TextInput
-                style={styles.input}
+                style={[styles.input, errors.brand && styles.errorInput]}
                 value={value}
                 onChangeText={onChange}
                 keyboardType="numeric"
@@ -315,9 +322,10 @@ const IndentFormation = () => {
         <Controller
           name="shop_id"
           control={control}
+          rules={{required: 'Shop ID is required'}}
           render={({field: {onChange, value}}) => (
             <TextInput
-              style={[styles.input, shopIdLocked && styles.disabledInput]}
+              style={[styles.input, shopIdLocked && styles.disabledInput,errors.shop_id && styles.errorInput]}
               value={value}
               onChangeText={onChange}
               editable={!shopIdLocked}
@@ -325,6 +333,9 @@ const IndentFormation = () => {
             />
           )}
         />
+        {errors.shop_id && (
+          <Text style={styles.errorText}>{errors.shop_id.message}</Text>
+        )}
       </View>
 
       <Text style={styles.sectionHeader}>Brand Information</Text>
@@ -367,8 +378,7 @@ const IndentFormation = () => {
       <Modal
         visible={brandModalVisible}
         animationType="slide"
-        transparent={false}
-      >
+        transparent={false}>
         <View style={styles.modalContainer}>
           <View style={styles.searchContainer}>
             <TextInput
@@ -383,23 +393,24 @@ const IndentFormation = () => {
               onPress={() => {
                 setBrandModalVisible(false);
                 setSearchQuery('');
-              }}
-            >
+              }}>
               <Icon name="close" size={24} color="#d9534f" />
             </TouchableOpacity>
           </View>
           <FlatList
             data={filteredBrands}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
+            keyExtractor={item => item.id}
+            renderItem={({item}) => (
               <TouchableOpacity
                 style={styles.brandItem}
                 onPress={() => {
-                  setValue(`brand.${currentBrandIndex}.brand_name`, item.brand_name);
+                  setValue(
+                    `brand.${currentBrandIndex}.brand_name`,
+                    item.brand_name,
+                  );
                   setBrandModalVisible(false);
                   setSearchQuery('');
-                }}
-              >
+                }}>
                 <Text style={styles.brandText}>{item.brand_name}</Text>
               </TouchableOpacity>
             )}
@@ -473,7 +484,9 @@ const IndentFormation = () => {
               <TouchableOpacity
                 style={[styles.modalButton, {marginBottom: 10}]}
                 onPress={generatePDF}>
-                <Text style={styles.modalButtonText}>Export as PDF</Text>
+                <Text style={styles.modalButtonText}>
+                  {loading ? 'Exporting...' : 'Export as PDF'}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -631,6 +644,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     marginBottom: 20,
+    elevation:5
   },
   submitButtonText: {
     color: 'white',

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   getShopBalanceSheetsAsync,
@@ -33,6 +33,8 @@ const BalanceSheetPage = ({ route }) => {
   const warehouseBalanceSheets = useSelector(selectWarehouseBalanceSheets);
   const error = useSelector(selectBalanceSheetError);
   const status = useSelector((state) => state.balanceSheet.status);
+
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (type === "shop" && isOverall) {
@@ -156,11 +158,13 @@ const BalanceSheetPage = ({ route }) => {
       const file = await RNHTMLtoPDF.convert(options);
       console.log("PDF Path:", file.filePath);
 
+      setLoading(true)
+
       if (Platform.OS === "android") {
         RNBlobUtil.fs
           .scanFile([{ path: file.filePath, mime: "application/pdf" }])
-          .then(() => console.log("Scan success"))
-          .catch((err) => console.log("Scan error", err));
+          .then(() => setLoading(false))
+          .catch((err) => setLoading(false));
       }
 
       const fileExists = await RNFS.exists(file.filePath);
@@ -210,7 +214,7 @@ const BalanceSheetPage = ({ route }) => {
       <BalanceSheetTable data={balanceSheetData} />
 
       <View style={styles.downloadBtn}>
-        <Button title="Export to PDF" color={colors.primary} onPress={generatePDF} />
+        <Button title={loading ? "Exporting..." : "Export as PDF"} color={colors.primary} onPress={generatePDF} />
       </View>
     </View>
   );

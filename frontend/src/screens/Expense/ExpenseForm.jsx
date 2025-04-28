@@ -67,12 +67,15 @@ const ExpenseForm = () => {
       <Text style={styles.heading}>Add Expense</Text>
       
       <View style={styles.formGroup}>
-        <Text style={styles.label}>Shop ID</Text>
+        <Text style={styles.label}>Shop ID *</Text>
         <Controller
           control={control}
+          rules={{
+            required:'Shop Id is required'
+          }}
           render={({ field: { onChange, onBlur, value } }) => (
             <TextInput
-              style={styles.input}
+              style={[styles.input,errors.shop_id && styles.errorInput]}
               value={value}
               onBlur={onBlur}
               onChangeText={onChange}
@@ -82,10 +85,13 @@ const ExpenseForm = () => {
           )}
           name="shop_id"
         />
+        {errors.shop_id && (
+          <Text style={styles.errorText}>{errors.shop_id.message}</Text>
+        )}
       </View>
 
       <View style={styles.formGroup}>
-        <Text style={styles.label}>Amount</Text>
+        <Text style={styles.label}>Amount *</Text>
         <Controller
           control={control}
           rules={{
@@ -113,7 +119,7 @@ const ExpenseForm = () => {
       </View>
 
       <View style={styles.formGroup}>
-        <Text style={styles.label}>Message</Text>
+        <Text style={styles.label}>Message *</Text>
         <Controller
           control={control}
           rules={{
@@ -201,14 +207,16 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     marginBottom: 5,
-    color: colors.textDark,
+    fontWeight:'600',
+    color: colors.primary,
   },
   input: {
-    height: 40,
+    height: 50,
     borderColor: colors.grayDark,
     borderWidth: 1,
-    borderRadius: 5,
+    borderRadius: 8,
     paddingHorizontal: 10,
+    fontSize:16,
     backgroundColor: colors.white,
   },
   errorInput: {
@@ -256,9 +264,10 @@ const styles = StyleSheet.create({
   submitButton: {
     backgroundColor: colors.primary,
     padding: 15,
-    borderRadius: 5,
+    borderRadius: 8,
     alignItems: 'center',
     marginTop: 20,
+    elevation:2
   },
   submitButtonText: {
     color: colors.white,

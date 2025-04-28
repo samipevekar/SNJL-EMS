@@ -130,63 +130,73 @@ export const loginUser = async (req, res) => {
 // edit user
 export const editUser = async (req, res) => {
   try {
-    const { userId } = req.params; // User ID to be edited
+    const { userId } = req.params;
     const { name, email, password, role, assigned_shops } = req.body;
-    const requesterId = req.user?.id; // Logged-in user ID
-
-    const requesterRole = req.user?.role; // Logged-in user role
-
+    const requesterId = req.user?.id;
+    const requesterRole = req.user?.role;
 
     if (!requesterId) {
-      return res.status(403).json({success:false, error: 'Unauthorized request.' });
+      return res.status(403).json({ success: false, error: 'Unauthorized request.' });
     }
 
-    if(role === "user" && assigned_shops.length > 1){
-      return res.status(400).json({success:false, error: 'Users can only be assigned to one shop'})
+    if (role === "user" && assigned_shops?.length > 1) {
+      return res.status(400).json({ success: false, error: 'Users can only be assigned to one shop' });
     }
 
     // Fetch user to be edited
-    const userToEdit = await query('SELECT id, role FROM users WHERE id = $1', [userId]);
+    const userToEdit = await query('SELECT id, email, role FROM users WHERE id = $1', [userId]);
 
     if (userToEdit.rows.length === 0) {
-      return res.status(404).json({success:false, error: 'User not found.' });
+      return res.status(404).json({ success: false, error: 'User not found.' });
     }
 
     const targetUser = userToEdit.rows[0];
 
+    // Email validation - only if email is being changed
+    if (email && email !== targetUser.email) {
+      const checkEmail = await query('SELECT id FROM users WHERE email = $1', [email]);
+      if (checkEmail.rowCount > 0) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Email already exists',
+          field: 'email' // Add this to help frontend identify which field has error
+        });
+      }
+    }
+
     // Permission Logic
     if (requesterId !== targetUser.id) {
       if (requesterRole === 'manager' && (targetUser.role === 'manager' || targetUser.role === 'super_user')) {
-        return res.status(403).json({success:false, error: 'Managers can only edit users and themselves.' });
+        return res.status(403).json({ success: false, error: 'Managers can only edit users and themselves.' });
       }
 
       if (requesterRole === 'user') {
-        return res.status(403).json({success:false, error: 'Users can only edit their own profile.' });
+        return res.status(403).json({ success: false, error: 'Users can only edit their own profile.' });
       }
 
       if (requesterRole !== 'super_user' && requesterRole !== 'manager') {
-        return res.status(403).json({success:false, error: 'Unauthorized access.' });
+        return res.status(403).json({ success: false, error: 'Unauthorized access.' });
       }
     }
 
     // Role change restrictions
     if (role) {
-      if (requesterId === 'super_user') {
-        return res.status(403).json({success:false, error: 'You cannot change your own role.' });
+      if (requesterId === userId && requesterRole === 'super_user') {
+        return res.status(403).json({ success: false, error: 'You cannot change your own role.' });
       }
 
       if (requesterRole === 'manager' && role !== 'user') {
-        return res.status(403).json({success:false, error: 'Managers can only assign the user role.' });
+        return res.status(403).json({ success: false, error: 'Managers can only assign the user role.' });
       }
 
-      if (requesterRole !== 'super_user') {
-        return res.status(403).json({success:false, error: 'Only super users can change roles.' });
+      if (requesterRole !== 'super_user' && role !== targetUser.role) {
+        return res.status(403).json({ success: false, error: 'Only super users can change roles.' });
       }
     }
 
-    // check assigned shop exists
+    // Check assigned shops exist
     if (assigned_shops && !(await validateShops(assigned_shops))) {
-      return res.status(400).json({success:false, error: 'One or more assigned shops do not exist.' });
+      return res.status(400).json({ success: false, error: 'One or more assigned shops do not exist.' });
     }
 
     // If password is being updated, hash it
@@ -202,15 +212,31 @@ export const editUser = async (req, res) => {
         email = COALESCE($2, email), 
         password = COALESCE($3, password),
         role = COALESCE($4, role),
-        assigned_shops = COALESCE($5, assigned_shops)
-        WHERE id = $6 RETURNING id, name, email, role, assigned_shops`,
-      [name, email, hashedPassword || null, role || targetUser.role, assigned_shops,userId]
+        assigned_shops = COALESCE($5, assigned_shops),
+        updated_at = NOW()
+      WHERE id = $6 
+      RETURNING id, name, email, role, assigned_shops`,
+      [
+        name || targetUser.name,
+        email || targetUser.email,
+        hashedPassword || null,
+        role || targetUser.role,
+        assigned_shops || targetUser.assigned_shops,
+        userId
+      ]
     );
 
-    res.json({success:true, message: 'User updated successfully', user: updatedUser.rows[0] });
+    res.json({ 
+      success: true, 
+      message: 'User updated successfully', 
+      user: updatedUser.rows[0] 
+    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Server error during user update' });
+    console.error('Error in editUser:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Server error during user update' 
+    });
   }
 };
 

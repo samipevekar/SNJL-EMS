@@ -11,6 +11,8 @@ import indentRoutes from './routes/indentformationRoutes.js';
 import attedanceRoutes from './routes/attendanceRoutes.js';
 import balanceSheetRoutes from './routes/balanceSheetRoutes.js';
 import stockIncrementRoutes from './routes/stockIncrementRoutes.js';
+import cron from 'node-cron'
+import axios from 'axios';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -39,6 +41,17 @@ app.use("/api/indent", indentRoutes);
 app.use("/api/attendance", attedanceRoutes);
 app.use("/api/balance-sheet", balanceSheetRoutes);
 app.use("/api/stock-increment", stockIncrementRoutes);
+
+cron.schedule('*/4 * * * *', async () => {
+  try {
+      const response = await axios.get(`${ 'https://snjl-ems.onrender.com' || `http://localhost:${port}`}/`, {
+          family: 4  // Force IPv4
+      });
+      console.log('Pinged the server:', response.data);
+  } catch (error) {
+      console.error('Error pinging the server:', error.message);
+  }
+});
 
 app.listen(port, () => {
   console.log("Server running locally on port 4000");
