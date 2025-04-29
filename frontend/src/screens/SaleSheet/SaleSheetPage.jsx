@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { 
   StyleSheet, 
@@ -20,6 +20,7 @@ import {
 import colors from '../../theme/colors';
 import { selectUser } from '../../redux/slice/authSlice';
 import { formatDateLeft } from '../../utils/formatDateLeft';
+import EditSaleSheetModal from '../../components/EditSaleSheetModal';
 
 const SaleSheetsPage = ({ navigation }) => {
   const dispatch = useDispatch();
@@ -33,6 +34,7 @@ const SaleSheetsPage = ({ navigation }) => {
     upi: 0,
     total_expenses: 0
   });
+  const [editingSheet, setEditingSheet] = useState(null);
   const shopId = user?.assigned_shops?.length > 0 ? user.assigned_shops[0] : null;
 
   const calculateTotals = useCallback((sheets) => {
@@ -144,7 +146,13 @@ const SaleSheetsPage = ({ navigation }) => {
         <FlatList
           data={saleSheets}
           keyExtractor={(item) => item.id.toString()}
-          renderItem={({ item }) => <SaleSheetCard item={item} showEditButton={true} />}
+          renderItem={({ item }) => (
+            <SaleSheetCard 
+              item={item} 
+              showEditButton={true}
+              onEditPress={() => setEditingSheet(item)}
+            />
+          )}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -158,14 +166,19 @@ const SaleSheetsPage = ({ navigation }) => {
         />
       )}
 
-      </View>
+      <EditSaleSheetModal
+        visible={!!editingSheet}
+        onClose={() => setEditingSheet(null)}
+        saleSheet={editingSheet}
+      />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: colors.background
   },
   loadingContainer: {
     flex: 1,

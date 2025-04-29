@@ -146,7 +146,7 @@ export const editUser = async (req, res) => {
     }
 
     // Fetch user to be edited
-    const userToEdit = await query('SELECT id, role FROM users WHERE id = $1', [userId]);
+    const userToEdit = await query('SELECT id, role, email FROM users WHERE id = $1', [userId]);
 
     if (userToEdit.rows.length === 0) {
       return res.status(404).json({success:false, error: 'User not found.' });
@@ -178,9 +178,9 @@ export const editUser = async (req, res) => {
 
     // Role change restrictions
     if (role) {
-      if (requesterId === 'super_user') {
-        return res.status(403).json({success:false, error: 'You cannot change your own role.' });
-      }
+      // if (requesterRole === 'super_user') {
+      //   return res.status(403).json({success:false, error: 'You cannot change your own role.' });
+      // }
 
       if (requesterRole === 'manager' && role !== 'user') {
         return res.status(403).json({success:false, error: 'Managers can only assign the user role.' });

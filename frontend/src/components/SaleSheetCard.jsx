@@ -1,15 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import colors from '../theme/colors';
 import { formatDateLeft } from '../utils/formatDateLeft';
-import EditSaleSheetModal from './EditSaleSheetModal';
 import { useNavigation } from '@react-navigation/native';
 
-const SaleSheetCard = ({ item, showDate, showEditButton }) => {
-
-  const [editModalVisible, setEditModalVisible] = useState(false);
-
-  const navigation = useNavigation()
+const SaleSheetCard = ({ item, showDate, showEditButton, onEditPress }) => {
+  const navigation = useNavigation();
 
   const handlePress = () => {
     navigation.navigate('SaleSheetDetails', { id: item.id });
@@ -17,34 +13,28 @@ const SaleSheetCard = ({ item, showDate, showEditButton }) => {
 
   return (
     <TouchableOpacity onPress={handlePress}>
-    <View style={styles.card}>
-      <View style={styles.infoContainer}>
-        <View style={styles.topRow}>
-          <Text style={styles.brandName}>{item.brand_name}</Text>
-          <Text style={styles.volume}>{item.volume_ml}ml</Text>
+      <View style={styles.card}>
+        <View style={styles.infoContainer}>
+          <View style={styles.topRow}>
+            <Text style={styles.brandName}>{item.brand_name}</Text>
+            <Text style={styles.volume}>{item.volume_ml}ml</Text>
+          </View>
+          <View style={styles.bottomRow}>
+            <Text style={styles.saleInfo}>Sale: {item.sale}</Text>
+            <Text style={styles.balanceInfo}>Closing: {item.closing_balance}</Text>
+            {showDate && <Text style={styles.saleDate}>{formatDateLeft(item.sale_date)}</Text>}
+          </View>
         </View>
-        <View style={styles.bottomRow}>
-          <Text style={styles.saleInfo}>Sale: {item.sale}</Text>
-          <Text style={styles.balanceInfo}>Closing: {item.closing_balance}</Text>
-          {showDate && <Text style={styles.saleDate}>{formatDateLeft(item.sale_date)}</Text>}
-        </View>
+        
+        {showEditButton && (
+          <TouchableOpacity 
+            style={styles.editButton} 
+            onPress={() => onEditPress(item)}
+          >
+            <Text style={styles.editButtonText}>Edit</Text>
+          </TouchableOpacity>
+        )}
       </View>
-      
-      {showEditButton && (
-        <TouchableOpacity 
-          style={styles.editButton} 
-          onPress={() => setEditModalVisible(true)}
-        >
-          <Text style={styles.editButtonText}>Edit</Text>
-        </TouchableOpacity>
-      )}
-
-      <EditSaleSheetModal
-        visible={editModalVisible}
-        onClose={() => setEditModalVisible(false)}
-        saleSheet={item}
-      />
-    </View>
     </TouchableOpacity>
   );
 };
@@ -59,7 +49,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    minHeight: 60, // Reduced height
+    minHeight: 60,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,

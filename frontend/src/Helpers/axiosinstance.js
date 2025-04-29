@@ -3,6 +3,9 @@ import { getToken } from "../storage/AuthStorage";
 
 const BASE_URL = "https://snjl-ems.onrender.com/api";
 
+// const BASE_URL = "http://192.168.144.81:4000/api";
+
+
 const axiosInstance = axios.create({
   baseURL: BASE_URL,
   withCredentials: true,

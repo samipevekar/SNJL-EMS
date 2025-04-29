@@ -44,7 +44,7 @@ export const indentSlice = createSlice({
       })
       .addCase(addIndentAsync.fulfilled, (state, action) => {
         state.status = 'succeeded';
-        state.indentData = action.payload;
+        state.indentData = action.payload.data;
       })
       .addCase(addIndentAsync.rejected, (state, action) => {
         state.status = 'failed';

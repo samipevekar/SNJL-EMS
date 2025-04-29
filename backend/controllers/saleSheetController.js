@@ -106,7 +106,8 @@ export const createSaleSheet = async (req, res) => {
         ? expenses.reduce((sum, exp) => sum + exp.amount, 0)
         : 0;
 
-    const net_cash = daily_sale - total_expenses + 100;
+    const canteen = shop.rows[0].canteen
+    const net_cash = daily_sale - total_expenses + canteen;
     const cash_in_hand = (net_cash - upi) || 0;
 
     const result = await query(
@@ -125,7 +126,7 @@ export const createSaleSheet = async (req, res) => {
         JSON.stringify(expenses),
         upi,
         net_cash,
-        100,
+        canteen,
         cash_in_hand
       ]
     );
@@ -268,7 +269,7 @@ export const updateSaleSheet = async (req, res) => {
     }
 
     const daily_sale = validSale * mrp_per_unit;
-    const net_cash = daily_sale - total_expenses + 100; // Including canteen amount (100)
+    const net_cash = daily_sale - total_expenses + existingSheet.canteen; 
     const cash_in_hand = net_cash - parseNumber(upi ?? existingSheet.upi, 0);
     const closing_balance = opening_balance - validSale;
 

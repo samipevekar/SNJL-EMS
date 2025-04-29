@@ -91,7 +91,7 @@ const EditSaleSheetModal = ({ visible, onClose, saleSheet }) => {
           </View>
 
           {/* UPI Input */}
-          <View style={styles.inputGroup}>
+          {saleSheet && saleSheet?.upi > 0 && <View style={styles.inputGroup}>
             <Text style={styles.label}>UPI Amount</Text>
             <TextInput
               style={styles.input}
@@ -100,10 +100,10 @@ const EditSaleSheetModal = ({ visible, onClose, saleSheet }) => {
               keyboardType="numeric"
               placeholder={`Current: ${saleSheet?.upi || 0}`}
             />
-          </View>
+          </View>}
 
           {/* Expenses Section */}
-          <View style={styles.expensesHeader}>
+          {expenses.length > 0 && <View style={styles.expensesHeader}>
             <Text style={styles.label}>Expenses</Text>
             <TouchableOpacity 
               style={styles.addButton}
@@ -111,9 +111,9 @@ const EditSaleSheetModal = ({ visible, onClose, saleSheet }) => {
             >
               <Text style={styles.addButtonText}>+ Add</Text>
             </TouchableOpacity>
-          </View>
+          </View>}
 
-          {expenses.length > 0 ? (
+          {expenses.length > 0 && (
             <FlatList
               data={expenses}
               keyExtractor={(item, index) => index.toString()}
@@ -138,13 +138,12 @@ const EditSaleSheetModal = ({ visible, onClose, saleSheet }) => {
                 </View>
               )}
             />
-          ) : (
-            <Text style={styles.noExpensesText}>No expenses added</Text>
           )}
 
           {/* Submit Button */}
           <TouchableOpacity 
-            style={styles.submitButton} 
+            style={styles.submitButton}
+            disabled={loading === 'loading'} 
             onPress={handleUpdate}
           >
             <Text style={styles.submitButtonText}>{loading === 'loading' ? "Updating..." : "Update Sale Sheet"}</Text>

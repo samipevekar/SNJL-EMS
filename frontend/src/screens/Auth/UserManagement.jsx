@@ -301,7 +301,7 @@ const UserManagement = () => {
               </TouchableOpacity>
             )}
 
-            {currentUser?.role === 'super_user' && (
+            {selectedUser?.role === 'super_user' ? '' : (
               <Controller
                 control={control}
                 render={({ field: { onChange, value } }) => (
@@ -331,7 +331,7 @@ const UserManagement = () => {
               />
             )}
 
-            <View style={styles.inputContainer}>
+            {selectedUser?.role === "super_user" ? "" : <View style={styles.inputContainer}>
               <Text style={styles.label}>Assigned Shops (comma separated)</Text>
               <TextInput
                 style={styles.input}
@@ -340,11 +340,12 @@ const UserManagement = () => {
                 placeholder="e.g. 1, 2, 3"
                 keyboardType="numbers-and-punctuation"
               />
-            </View>
+            </View>}
 
             <TouchableOpacity 
               style={styles.submitButton} 
               onPress={handleSubmit(onSubmit)}
+              disabled={formLoading === 'loading'}
             >
               <Text style={styles.submitButtonText}>
                 {editMode ? (formLoading === 'loading' ? <ActivityIndicator color={colors.white} size={'small'}/> : 'Update User') : (formLoading === 'loading' ? <ActivityIndicator color={colors.white} size={'small'}/> : 'Create User')}

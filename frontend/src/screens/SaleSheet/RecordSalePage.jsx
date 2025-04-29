@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -10,8 +10,9 @@ import {
   KeyboardAvoidingView, 
   Platform, 
   TouchableWithoutFeedback, 
-  Keyboard, 
-  Pressable
+  Keyboard,
+  ScrollView,
+  Modal
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
@@ -33,7 +34,7 @@ import {
 
 import colors from '../../theme/colors';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-
+import { TextInput } from 'react-native-gesture-handler';
 
 const RecordSalePage = ({ navigation }) => {
   const dispatch = useDispatch();
@@ -43,6 +44,13 @@ const RecordSalePage = ({ navigation }) => {
   const createStatus = useSelector(selectSaleSheetStatus);
   const createError = useSelector(selectSaleSheetError);
   const shopId = user?.assigned_shops?.length > 0 ? user.assigned_shops[0] : null;
+  
+  const [saleData, setSaleData] = useState({});
+  const [expenses, setExpenses] = useState([]);
+  const [upiAmount, setUpiAmount] = useState('');
+  const [expenseModalVisible, setExpenseModalVisible] = useState(false);
+  const [expenseMessage, setExpenseMessage] = useState('');
+  const [expenseAmount, setExpenseAmount] = useState('');
 
   useFocusEffect(
     useCallback(() => {
@@ -55,31 +63,69 @@ const RecordSalePage = ({ navigation }) => {
     }, [dispatch, shopId])
   );
 
-  const handleAddSale = async (saleData) => {
+  const handleCardChange = (data) => {
+    setSaleData(prev => ({
+      ...prev,
+      [`${data.brand_name}-${data.volume_ml}`]: data
+    }));
+  };
+
+  const handleAddExpense = () => {
+    if (!expenseMessage || !expenseAmount) return;
+
+    setExpenses([...expenses, {
+      message: expenseMessage,
+      amount: parseInt(expenseAmount)
+    }]);
+    setExpenseMessage('');
+    setExpenseAmount('');
+    setExpenseModalVisible(false);
+  };
+
+  const removeExpense = (index) => {
+    const updatedExpenses = [...expenses];
+    updatedExpenses.splice(index, 1);
+    setExpenses(updatedExpenses);
+  };
+
+  const handleAddAllSales = async () => {
     if (!shopId) {
       Alert.alert('Error', 'Shop ID not available');
       return;
     }
 
     try {
-      const formData = {
-        shop_id: shopId,
-        brand_name: saleData.brand_name,
-        volume_ml: saleData.volume_ml,
-        sale: saleData.sale,
-        upi: saleData.upi || 0,
-        expenses: saleData.expenses || []
-      };
+      const salesToSubmit = Object.values(saleData).filter(item => item.sale > 0);
 
-      const result = await dispatch(createSaleSheetAsync(formData)).unwrap();
+      if (salesToSubmit.length === 0) {
+        Alert.alert('Error', 'Please enter sale quantities for at least one brand');
+        return;
+      }
 
-      if (result.success) {
-        Alert.alert('Success', 'Sale recorded successfully');
+      const result = await Promise.all(
+        salesToSubmit.map((item, index) => {
+          const isLast = index === salesToSubmit.length - 1;
+          return dispatch(createSaleSheetAsync({
+            shop_id: shopId,
+            brand_name: item.brand_name,
+            volume_ml: item.volume_ml,
+            sale: item.sale,
+            upi: isLast && upiAmount ? parseInt(upiAmount) : 0,
+            expenses: isLast && expenses.length > 0 ? expenses : []
+          })).unwrap();
+        })
+      );
+
+      if (result.every(res => res.success)) {
+        Alert.alert('Success', 'All sales recorded successfully');
+        setSaleData({});
+        setUpiAmount('');
+        setExpenses([]);
       } else {
-        Alert.alert('Error', result.error || 'Failed to record sale');
+        Alert.alert('Error', 'Failed to record some sales');
       }
     } catch (error) {
-      Alert.alert('Error', error.message || 'Failed to record sale');
+      Alert.alert('Error', error.message || 'Failed to record sales');
     }
   };
 
@@ -116,7 +162,10 @@ const RecordSalePage = ({ navigation }) => {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.addStock} onPress={()=> navigation.navigate('StockIncrementForm')}>
+          <TouchableOpacity 
+            style={styles.addStock} 
+            onPress={() => navigation.navigate('StockIncrementForm')}
+          >
             <Icon name="add-circle" size={24} color={colors.primary} />
             <Text style={styles.stockTxt}>Add Stock</Text>
           </TouchableOpacity>
@@ -124,22 +173,118 @@ const RecordSalePage = ({ navigation }) => {
           {brands.length === 0 ? (
             <Text style={styles.emptyText}>No brands found for this shop</Text>
           ) : (
-            <FlatList
-              data={brands}
-              keyExtractor={(item, index) => `${item.brand_name}-${item.volume_ml}-${index}`}
-              renderItem={({ item, index }) => (
-                <StockIncrementCard
-                  brand_name={item.brand_name}
-                  volume_ml={item.volume_ml}
-                  // showUpi={index === 0}
-                  onAddSale={handleAddSale}
+            <ScrollView style={styles.scrollView}>
+              <FlatList
+                data={brands}
+                keyExtractor={(item, index) => `${item.brand_name}-${item.volume_ml}-${index}`}
+                renderItem={({ item }) => (
+                  <StockIncrementCard
+                    brand_name={item.brand_name}
+                    volume_ml={item.volume_ml}
+                    onChange={handleCardChange}
+                  />
+                )}
+                contentContainerStyle={styles.listContent}
+                keyboardShouldPersistTaps="handled"
+                scrollEnabled={false}
+              />
+
+              <View style={styles.upiContainer}>
+                <Text style={styles.label}>UPI Amount (Optional)</Text>
+                <TextInput
+                  style={styles.upiInput}
+                  placeholder="Enter UPI amount"
+                  keyboardType="numeric"
+                  value={upiAmount}
+                  onChangeText={(text) => {
+                    if (/^\d*$/.test(text)) {
+                      setUpiAmount(text);
+                    }
+                  }}
                 />
+              </View>
+
+              <TouchableOpacity 
+                style={styles.expenseButton} 
+                onPress={() => setExpenseModalVisible(true)}
+              >
+                <Text style={styles.expenseButtonText}>Add Expenses</Text>
+              </TouchableOpacity>
+
+              {expenses.length > 0 && (
+                <View style={styles.expensesList}>
+                  {expenses.map((item, index) => (
+                    <View key={index} style={styles.expenseItem}>
+                      <Text style={styles.expenseText}>{item.message}: ₹{item.amount}</Text>
+                      <TouchableOpacity onPress={() => removeExpense(index)}>
+                        <Text style={styles.removeExpense}>×</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
               )}
-              contentContainerStyle={styles.listContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            />
+
+              <TouchableOpacity 
+                style={styles.addAllButton} 
+                onPress={handleAddAllSales}
+                disabled={createStatus === 'loading'}
+              >
+                {createStatus === 'loading' ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.addAllButtonText}>Add All Sales</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
           )}
+
+          {/* Expense Modal */}
+          <Modal
+            visible={expenseModalVisible}
+            transparent
+            animationType="slide"
+          >
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContainer}>
+                  <Text style={styles.modalTitle}>Add Expense</Text>
+
+                  <TextInput
+                    style={[styles.upiInput,{marginBottom:10}]}
+                    placeholder="Message"
+                    value={expenseMessage}
+                    onChangeText={setExpenseMessage}
+                  />
+                  <TextInput
+                    style={styles.upiInput}
+                    placeholder="Amount"
+                    keyboardType="numeric"
+                    value={expenseAmount}
+                    onChangeText={(text) => {
+                      if (/^\d*$/.test(text)) {
+                        setExpenseAmount(text);
+                      }
+                    }}
+                  />
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
+                    <TouchableOpacity 
+                      style={[styles.expenseButton, { flex: 1, marginRight: 10 }]} 
+                      onPress={() => setExpenseModalVisible(false)}
+                    >
+                      <Text style={styles.expenseButtonText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.expenseButton, { flex: 1, backgroundColor: colors.primary }]} 
+                      onPress={handleAddExpense}
+                    >
+                      <Text style={[styles.expenseButtonText, { color: '#fff' }]}>Add</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
         </View>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
@@ -151,6 +296,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
     padding: 16,
+  },
+  scrollView: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -181,7 +329,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   listContent: {
-    paddingBottom: 30,
+    paddingBottom: 16,
   },
   emptyText: {
     textAlign: 'center',
@@ -195,26 +343,107 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.danger,
   },
-  addStock:{
-    display:'flex',
-    flexDirection:'row',
-    justifyContent:'center',
-    alignItems:'center',
-    marginVertical:10,
-    gap:5,
-    backgroundColor:colors.secondary,
-    paddingVertical:5,
-    paddingHorizontal:10,
-    marginHorizontal:10,
-    borderRadius:8
-
-
+  addStock: {
+    display: 'flex',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 10,
+    gap: 5,
+    backgroundColor: colors.secondary,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    marginHorizontal: 10,
+    borderRadius: 8
   },
-  stockTxt:{
-    fontSize:16,
-    fontWeight:'500',
-    color:colors.primary
-  }
+  stockTxt: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.primary
+  },
+  upiContainer: {
+    marginHorizontal: 10,
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
+    color: colors.textDark,
+  },
+  upiInput: {
+    height: 40,
+    borderColor: colors.secondary,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    backgroundColor: colors.white,
+    fontSize: 14,
+  },
+  expenseButton: {
+    backgroundColor: colors.secondary,
+    paddingVertical: 10,
+    borderRadius: 6,
+    alignItems: 'center',
+    marginHorizontal: 10,
+    marginBottom: 16,
+  },
+  expenseButtonText: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  expensesList: {
+    marginHorizontal: 10,
+    marginBottom: 16,
+  },
+  expenseItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.lightGray,
+  },
+  expenseText: {
+    fontSize: 14,
+    color: colors.textDark,
+  },
+  removeExpense: {
+    color: colors.danger,
+    fontSize: 20,
+    paddingHorizontal: 8,
+  },
+  addAllButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 10,
+    marginBottom: 20,
+  },
+  addAllButtonText: {
+    color: colors.white,
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  modalContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 20,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    color: colors.textDark,
+  },
 });
 
 export default RecordSalePage;

@@ -11,9 +11,8 @@ import {
   FlatList,
   ActivityIndicator,
 } from 'react-native';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { useDispatch, useSelector } from 'react-redux';
-import { Picker } from '@react-native-picker/picker';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import colors from '../../theme/colors';
 import { addStockIncrement, resetAddStockStatus, selectAddStockError, selectAddStockStatus } from '../../redux/slice/stockIncrementSlice';
@@ -23,47 +22,72 @@ import { selectUser } from '../../redux/slice/authSlice';
 const StockIncrementForm = () => {
   const dispatch = useDispatch();
   const brandOptions = useSelector(selectBrands);
-  const warehouseOptions = ['Warehouse A', 'Warehouse B', 'Warehouse C'];
+  const warehouseOptions = ['Warehouse A', 'Warehouse B', 'Warehouse C']; // Your warehouse options
   const status = useSelector(selectAddStockStatus);
   const error = useSelector(selectAddStockError);
   const user = useSelector(selectUser);
 
   const [brandModalVisible, setBrandModalVisible] = useState(false);
+  const [warehouseModalVisible, setWarehouseModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentBrandIndex, setCurrentBrandIndex] = useState(0);
+  const [loading, setLoading] = useState(false);
 
-  const { control, handleSubmit, reset, setValue, formState: { errors } } = useForm({
+  const { 
+    control, 
+    handleSubmit, 
+    reset, 
+    setValue, 
+    watch,
+    formState: { errors } 
+  } = useForm({
     defaultValues: {
-      shop_id: '',
-      brand_name: '',
-      volume_ml: '',
       warehouse_name: '',
       bill_id: '',
-      cases: '',
+      brands: [{ brand_name: '', volume_ml: '', cases: '' }],
     },
   });
 
-  const filteredBrands = brandOptions.filter(brand =>
-    brand.brand_name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: 'brands',
+  });
+
+  const watchBrands = watch('brands');
 
   const onSubmit = (data) => {
-    const stockData = {
-      shop_id: user?.assigned_shops[0],
-      bill_id: Number(data.bill_id),
-      brand_name: data.brand_name,
-      volume_ml: Number(data.volume_ml),
-      warehouse_name: data.warehouse_name,
-      cases: Number(data.cases),
-    };
-    dispatch(addStockIncrement(stockData));
+    setLoading(true);
+    
+    // Process each brand entry
+    const promises = data.brands.map(brand => {
+      const stockData = {
+        shop_id: user?.assigned_shops[0],
+        bill_id: Number(data.bill_id),
+        brand_name: brand.brand_name,
+        volume_ml: Number(brand.volume_ml),
+        warehouse_name: data.warehouse_name,
+        cases: Number(brand.cases),
+      };
+      
+      return dispatch(addStockIncrement(stockData)).unwrap();
+    });
+
+    Promise.all(promises)
+      .then(() => {
+        Alert.alert('Success', 'All stock increments added successfully!');
+        reset();
+      })
+      .catch(error => {
+        Alert.alert('Error', error?.message || 'Failed to add some stock increments');
+      })
+      .finally(() => {
+        setLoading(false);
+        dispatch(resetAddStockStatus());
+      });
   };
 
   useEffect(() => {
-    if (status === 'succeeded') {
-      Alert.alert('Success', 'Stock increment added successfully!');
-      reset();
-      dispatch(resetAddStockStatus());
-    } else if (status === 'failed' && error) {
+    if (status === 'failed' && error) {
       Alert.alert('Error', typeof error === 'string' ? error : 'Failed to add stock increment');
       dispatch(resetAddStockStatus());
     }
@@ -72,6 +96,122 @@ const StockIncrementForm = () => {
   useEffect(() => {
     dispatch(getBrandsAsync({type:'foreign'}));
   }, []);
+
+  const filteredBrands = brandOptions.filter(brand =>
+    brand.brand_name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleAddBrand = () => {
+    append({ brand_name: '', volume_ml: '', cases: '' });
+  };
+
+  const handleRemoveBrand = (index) => {
+    remove(index);
+  };
+
+  const renderBrandItem = ({ item, index }) => (
+    <View style={styles.brandItemContainer}>
+      <View style={styles.brandHeader}>
+        <Text style={styles.brandNumber}>Brand #{index + 1}</Text>
+        {index > 0 && (
+          <TouchableOpacity 
+            style={styles.removeBrandButton}
+            onPress={() => handleRemoveBrand(index)}
+          >
+            <Icon name="delete" size={20} color={colors.danger} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Brand Name */}
+      <View style={styles.fieldContainer}>
+        <Text style={styles.label}>Brand Name *</Text>
+        <Controller
+          control={control}
+          name={`brands.${index}.brand_name`}
+          rules={{ required: 'Brand name is required' }}
+          render={({ field: { value } }) => (
+            <>
+              <TouchableOpacity 
+                style={[styles.input, errors.brands?.[index]?.brand_name && styles.errorInput]}
+                onPress={() => {
+                  setCurrentBrandIndex(index);
+                  setBrandModalVisible(true);
+                }}
+              >
+                <Text style={value ? styles.pickerText : styles.placeholderText}>
+                  {value || 'Select Brand'}
+                </Text>
+                <Icon name="arrow-drop-down" size={24} color={colors.primary} />
+              </TouchableOpacity>
+              {errors.brands?.[index]?.brand_name && (
+                <Text style={styles.errorText}>{errors.brands[index].brand_name.message}</Text>
+              )}
+            </>
+          )}
+        />
+      </View>
+
+      {/* Volume */}
+      <View style={styles.fieldContainer}>
+        <Text style={styles.label}>Volume (ml) *</Text>
+        <Controller
+          control={control}
+          name={`brands.${index}.volume_ml`}
+          rules={{ 
+            required: 'Volume is required',
+            pattern: {
+              value: /^\d+$/,
+              message: 'Volume must be a number'
+            }
+          }}
+          render={({ field: { onChange, onBlur, value } }) => (
+            <TextInput
+              style={[styles.input, errors.brands?.[index]?.volume_ml && styles.errorInput]}
+              keyboardType="numeric"
+              onChangeText={onChange}
+              onBlur={onBlur}
+              value={value}
+              placeholder="Enter volume in ml"
+              editable={false} // Volume will be auto-filled when brand is selected
+            />
+          )}
+        />
+        {errors.brands?.[index]?.volume_ml && (
+          <Text style={styles.errorText}>{errors.brands[index].volume_ml.message}</Text>
+        )}
+      </View>
+
+      {/* Cases */}
+      <View style={styles.fieldContainer}>
+        <Text style={styles.label}>Cases *</Text>
+        <Controller
+          control={control}
+          name={`brands.${index}.cases`}
+          rules={{ 
+            required: 'Cases is required',
+            pattern: {
+              value: /^\d+$/,
+              message: 'Cases must be a number'
+            }
+          }}
+          render={({ field: { onChange, onBlur, value } }) => (
+            <TextInput
+              style={[styles.input, errors.brands?.[index]?.cases && styles.errorInput]}
+              keyboardType="numeric"
+              onChangeText={onChange}
+              onBlur={onBlur}
+              value={value}
+              placeholder="Enter number of cases"
+            />
+          )}
+        />
+        {errors.brands?.[index]?.cases && (
+          <Text style={styles.errorText}>{errors.brands[index].cases.message}</Text>
+        )}
+      </View>
+    </View>
+  );
 
   return (
     <ScrollView 
@@ -88,24 +228,22 @@ const StockIncrementForm = () => {
           name="warehouse_name"
           rules={{ required: 'Warehouse name is required' }}
           render={({ field: { onChange, value } }) => (
-            <View style={[styles.inputContainer, errors.warehouse_name && styles.errorInput]}>
-              <Picker
-                selectedValue={value}
-                onValueChange={onChange}
-                style={styles.picker}
-                dropdownIconColor={colors.primary}
+            <>
+              <TouchableOpacity
+                style={[styles.input, errors.warehouse_name && styles.errorInput]}
+                onPress={() => setWarehouseModalVisible(true)}
               >
-                <Picker.Item label="Select Warehouse" value="" />
-                {warehouseOptions.map((w) => (
-                  <Picker.Item key={w} label={w} value={w} />
-                ))}
-              </Picker>
-            </View>
+                <Text style={value ? styles.pickerText : styles.placeholderText}>
+                  {value || 'Select Warehouse'}
+                </Text>
+                <Icon name="arrow-drop-down" size={24} color={colors.primary} />
+              </TouchableOpacity>
+              {errors.warehouse_name && (
+                <Text style={styles.errorText}>{errors.warehouse_name.message}</Text>
+              )}
+            </>
           )}
         />
-        {errors.warehouse_name && (
-          <Text style={styles.errorText}>{errors.warehouse_name.message}</Text>
-        )}
       </View>
 
       {/* Bill ID */}
@@ -135,97 +273,70 @@ const StockIncrementForm = () => {
         {errors.bill_id && <Text style={styles.errorText}>{errors.bill_id.message}</Text>}
       </View>
 
-      {/* Brand Name */}
-      <View style={styles.fieldContainer}>
-        <Text style={styles.label}>Brand Name *</Text>
-        <Controller
-          control={control}
-          name="brand_name"
-          rules={{ required: 'Brand name is required' }}
-          render={({ field: { value } }) => (
-            <>
-              <TouchableOpacity 
-                style={[styles.input, errors.brand_name && styles.errorInput]}
-                onPress={() => setBrandModalVisible(true)}
-              >
-                <Text style={value ? styles.pickerText : styles.placeholderText}>
-                  {value || 'Select Brand'}
-                </Text>
-                <Icon name="arrow-drop-down" size={24} color={colors.primary} />
-              </TouchableOpacity>
-              {errors.brand_name && (
-                <Text style={styles.errorText}>{errors.brand_name.message}</Text>
-              )}
-            </>
-          )}
-        />
-      </View>
-
-      {/* Volume */}
-      <View style={styles.fieldContainer}>
-        <Text style={styles.label}>Volume (ml) *</Text>
-        <Controller
-          control={control}
-          name="volume_ml"
-          rules={{ 
-            required: 'Volume is required',
-            pattern: {
-              value: /^\d+$/,
-              message: 'Volume must be a number'
-            }
-          }}
-          render={({ field: { onChange, onBlur, value } }) => (
-            <TextInput
-              style={[styles.input, errors.volume_ml && styles.errorInput]}
-              keyboardType="numeric"
-              onChangeText={onChange}
-              onBlur={onBlur}
-              value={value}
-              placeholder="Enter volume in ml"
-            />
-          )}
-        />
-        {errors.volume_ml && <Text style={styles.errorText}>{errors.volume_ml.message}</Text>}
-      </View>
-
-      {/* Cases */}
-      <View style={styles.fieldContainer}>
-        <Text style={styles.label}>Cases *</Text>
-        <Controller
-          control={control}
-          name="cases"
-          rules={{ 
-            required: 'Cases is required',
-            pattern: {
-              value: /^\d+$/,
-              message: 'Cases must be a number'
-            }
-          }}
-          render={({ field: { onChange, onBlur, value } }) => (
-            <TextInput
-              style={[styles.input, errors.cases && styles.errorInput]}
-              keyboardType="numeric"
-              onChangeText={onChange}
-              onBlur={onBlur}
-              value={value}
-              placeholder="Enter number of cases"
-            />
-          )}
-        />
-        {errors.cases && <Text style={styles.errorText}>{errors.cases.message}</Text>}
-      </View>
+      {/* Brands List */}
+      <FlatList
+        data={fields}
+        renderItem={renderBrandItem}
+        keyExtractor={(item, index) => `brand-${index}`}
+        scrollEnabled={false}
+        ListFooterComponent={
+          <TouchableOpacity
+            style={styles.addBrandButton}
+            onPress={handleAddBrand}
+          >
+            <Icon name="add-circle" size={24} color={colors.success} />
+            <Text style={styles.addBrandButtonText}>Add Another Brand</Text>
+          </TouchableOpacity>
+        }
+      />
 
       <TouchableOpacity
         style={styles.submitButton}
-        disabled={status === 'loading'}
+        disabled={loading}
         onPress={handleSubmit(onSubmit)}
       >
-        {status === 'loading' ? (
+        {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (
           <Text style={styles.submitButtonText}>Add Stock</Text>
         )}
       </TouchableOpacity>
+
+      {/* Warehouse Selection Modal */}
+      <Modal
+        visible={warehouseModalVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setWarehouseModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Warehouse</Text>
+            <TouchableOpacity
+              onPress={() => setWarehouseModalVisible(false)}
+            >
+              <Icon name="close" size={24} color={colors.danger} />
+            </TouchableOpacity>
+          </View>
+          
+          <FlatList
+            data={warehouseOptions}
+            keyExtractor={(item) => item}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.warehouseItem}
+                onPress={() => {
+                  setValue('warehouse_name', item);
+                  setWarehouseModalVisible(false);
+                }}
+              >
+                <Text style={styles.warehouseText}>{item}</Text>
+              </TouchableOpacity>
+            )}
+            contentContainerStyle={styles.listContent}
+          />
+        </View>
+      </Modal>
 
       {/* Brand Selection Modal */}
       <Modal
@@ -254,17 +365,18 @@ const StockIncrementForm = () => {
           </View>
           <FlatList
             data={filteredBrands}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.id.toString()}
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={styles.brandItem}
                 onPress={() => {
-                  setValue('brand_name', item.brand_name);
+                  setValue(`brands.${currentBrandIndex}.brand_name`, item.brand_name);
+                  setValue(`brands.${currentBrandIndex}.volume_ml`, item.volume_ml.toString());
                   setBrandModalVisible(false);
                   setSearchQuery('');
                 }}
               >
-                <Text style={styles.brandText}>{item.brand_name}</Text>
+                <Text style={styles.brandText}>{item.brand_name} ({item.volume_ml}ml)</Text>
               </TouchableOpacity>
             )}
             contentContainerStyle={styles.listContent}
@@ -282,6 +394,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
+    paddingBottom: 40,
   },
   heading: {
     fontSize: 24,
@@ -293,6 +406,27 @@ const styles = StyleSheet.create({
   fieldContainer: {
     marginBottom: 16,
   },
+  brandItemContainer: {
+    backgroundColor: colors.white,
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.grayLight,
+  },
+  brandHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  brandNumber: {
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+  },
+  removeBrandButton: {
+    padding: 4,
+  },
   label: {
     marginBottom: 8,
     fontWeight: '600',
@@ -303,26 +437,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.grayLight,
-    padding: 14,
+    padding: 12,
     borderRadius: 8,
     fontSize: 16,
     height: 50,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  inputContainer: {
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.grayLight,
-    borderRadius: 8,
-    overflow: 'hidden',
-    height: 50,
-    justifyContent: 'center',
-  },
-  picker: {
-    // height: '100%',
-    width: '100%',
   },
   errorInput: {
     borderColor: colors.danger,
@@ -377,13 +498,29 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 16,
   },
+  addBrandButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.success,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  addBrandButtonText: {
+    color: colors.success,
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
   submitButton: {
     backgroundColor: colors.primary,
-    padding: 12,
+    padding: 16,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 20,
+    marginTop: 10,
     height: 50,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -393,8 +530,32 @@ const styles = StyleSheet.create({
   },
   submitButtonText: {
     color: colors.white,
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
+
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.grayLight,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+  },
+  warehouseItem: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.grayLight,
+    backgroundColor: colors.white,
+  },
+  warehouseText: {
+    fontSize: 16,
+    color: colors.textPrimary,
   },
 });
 
