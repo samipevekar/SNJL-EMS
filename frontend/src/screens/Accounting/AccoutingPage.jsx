@@ -7,6 +7,7 @@ import {formatDate} from '../../utils/formatDate';
 import {useDispatch, useSelector} from 'react-redux';
 import {getAllShopsAsync, selectShops} from '../../redux/slice/shopSlice';
 import {ScrollView} from 'react-native-gesture-handler';
+import { getWarehousesAsync, selectWarehouses } from '../../redux/slice/warehouseSlice';
 
 const AccountingPage = () => {
   const [expandedTab, setExpandedTab] = useState(null);
@@ -16,33 +17,31 @@ const AccountingPage = () => {
   const [showToDate, setShowToDate] = useState(false);
   const navigation = useNavigation();
 
-  // Fetch shops from Redux
-
   const dispatch = useDispatch();
   useEffect(() => {
     dispatch(getAllShopsAsync());
+    dispatch(getWarehousesAsync());
   }, []);
 
   const shops = useSelector(selectShops);
+  const warehouses = useSelector(selectWarehouses);
 
   const data = [
-    {title: 'Shop', type: 'shop', items: shops},
+    {title: 'Shop', type: 'shop', items: shops, nameField: 'shop_name'},
     {
       title: 'Warehouse',
       type: 'warehouse',
-      items: [
-        {shop_name: 'Warehouse A'},
-        {shop_name: 'Warehouse B'},
-        {shop_name: 'Warehouse C'},
-      ],
+      items: warehouses,
+      nameField: 'warehouse_name'
     },
     {
       title: 'Overall',
       type: 'overall',
       items: [
-        {shop_name: 'Cumulative Shop Revenue', category: 'shop'},
-        {shop_name: 'Warehouse Balance Ledger', category: 'warehouse'},
+        {name: 'Cumulative Shop Revenue', category: 'shop'},
+        {name: 'Warehouse Balance Ledger', category: 'warehouse'},
       ],
+      nameField: 'name'
     },
   ];
 
@@ -56,33 +55,38 @@ const AccountingPage = () => {
 
   const handleItemPress = (
     type,
-    shop_id,
-    warehouse_name = null,
+    id,
+    name = null,
     category = null,
   ) => {
     if (fromDate && toDate) {
       if (type === 'overall') {
-        // For overall, we pass the category instead of shop_id/warehouse_name
         navigation.navigate('BalanceSheetPage', {
-          type: category, // This will be either "shop" or "warehouse"
+          type: category,
           shop_id: null,
           warehouse_name: null,
           fromDate,
           toDate,
-          isOverall: true, // Add this flag to indicate it's an overall request
+          isOverall: true,
         });
       } else {
-        // Normal shop/warehouse case
         navigation.navigate('BalanceSheetPage', {
           type,
-          shop_id,
-          warehouse_name,
+          shop_id: type === 'shop' ? id : null,
+          warehouse_name: type === 'warehouse' ? name : null,
           fromDate,
           toDate,
           isOverall: false,
         });
       }
     }
+  };
+
+  const getDisplayName = (item, section) => {
+    if (section.type === 'overall') return item.name;
+    return section.type === 'shop' 
+      ? `${item.shop_name} (${item.shop_id})`
+      : item.warehouse_name;
   };
 
   return (
@@ -150,12 +154,14 @@ const AccountingPage = () => {
                     onPress={() =>
                       handleItemPress(
                         section.type,
-                        item?.shop_id,
-                        item?.shop_name,
+                        item?.shop_id || item?.id,
+                        section.type === 'warehouse' ? item.warehouse_name : null,
                         item?.category,
                       )
                     }>
-                    <Text style={styles.itemText}>{item.shop_name} {item?.shop_id && `(${item?.shop_id})`}</Text>
+                    <Text style={styles.itemText}>
+                      {getDisplayName(item, section)}
+                    </Text>
                   </TouchableOpacity>
                 ))}
             </View>

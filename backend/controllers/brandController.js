@@ -29,6 +29,8 @@ export const addBrand = async (req, res) => {
       if (existing.rowCount > 0) {
         return res.status(400).json({ error: "Brand with same name, category, and volume already exists" });
       }
+
+      const profit = mrp_per_case - cost_price_per_case
   
       // Insert brand
       const insert = await query(
@@ -43,8 +45,9 @@ export const addBrand = async (req, res) => {
           cost_price_per_case,
           mrp_per_unit,
           duty,
-          mrp_per_case
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          mrp_per_case,
+          profit
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,$11)
         RETURNING *
         `,
         [
@@ -57,7 +60,8 @@ export const addBrand = async (req, res) => {
           cost_price_per_case,
           mrp_per_unit,
           duty,
-          mrp_per_case
+          mrp_per_case,
+          profit
         ]
       );
   
@@ -77,7 +81,7 @@ export const getBrands = async (req, res) => {
     if (type) {
       const brands = await query(
         `
-                SELECT * FROM brands
+                SELECT id,brand_name,volume_ml FROM brands
                 WHERE liquor_type = $1
             `,
         [type]
@@ -87,7 +91,7 @@ export const getBrands = async (req, res) => {
     } else {
       const brands = await query(
         `
-            SELECT * FROM brands
+            SELECT id,brand_name,volume_ml FROM brands
             `
       );
       res.status(200).json(brands.rows);

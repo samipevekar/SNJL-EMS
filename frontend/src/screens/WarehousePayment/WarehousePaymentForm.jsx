@@ -21,9 +21,9 @@ import {
   resetPaymentState 
 } from '../../redux/slice/warehousePaymentSlice';
 import { selectUser } from '../../redux/slice/authSlice';
-import { Picker } from '@react-native-picker/picker';
-import { selectBrands, getBrandsAsync } from '../../redux/slice/brandSlice';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { clearBrands, getBrandsAsync, selectBrands } from '../../redux/slice/brandSlice';
+import { getWarehousesAsync, selectWarehouses } from '../../redux/slice/warehouseSlice';
 
 const WarehousePaymentPage = () => {
   const dispatch = useDispatch();
@@ -32,10 +32,12 @@ const WarehousePaymentPage = () => {
   const success = useSelector(selectPaymentSuccess);
   const user = useSelector(selectUser);
   const brands = useSelector(selectBrands);
+  const warehouses = useSelector(selectWarehouses)
 
-  const [warehouses] = useState(['Warehouse A', 'Warehouse B', 'Warehouse C']);
   const [brandModalVisible, setBrandModalVisible] = useState(false);
+  const [warehouseModalVisible, setWarehouseModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [warehouseSearchQuery, setWarehouseSearchQuery] = useState('');
 
   const {
     control,
@@ -47,20 +49,32 @@ const WarehousePaymentPage = () => {
     defaultValues: {
       user_id: user?.id || '',
       shop_id: '',
-      warehouse_name: warehouses[0],
+      warehouse_name: '',
       bill_id: '',
-      brand_name: '',
+      brand: '',
+      volume_ml: '',
       cases: '',
       amount: ''
     }
   });
 
   useEffect(() => {
-    dispatch(getBrandsAsync({type: 'foreign'}));
+    dispatch(getBrandsAsync({type: ''}));
+
+    dispatch(getWarehousesAsync())
+
+    return ()=>{
+      dispatch(clearBrands())
+    }
   }, []);
+
 
   const filteredBrands = brands.filter(brand =>
     brand.brand_name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredWarehouses = warehouses.filter(warehouse =>
+    warehouse.warehouse_name.toLowerCase().includes(warehouseSearchQuery.toLowerCase())
   );
 
   const onSubmit = (data) => {
@@ -68,6 +82,7 @@ const WarehousePaymentPage = () => {
       ...data,
       cases: parseInt(data.cases, 10),
       amount: parseFloat(data.amount),
+      volume_ml: parseInt(data.volume_ml, 10),
       user_id: user?.id
     };
     dispatch(addWarehousePaymentAsync(paymentData));
@@ -78,9 +93,10 @@ const WarehousePaymentPage = () => {
       Alert.alert('Success', 'Payment added successfully');
       reset({
         shop_id: '',
-        warehouse_name: warehouses[0],
+        warehouse_name: '',
         bill_id: '',
-        brand_name: brands[0]?.brand_name || '',
+        brand: '',
+        volume_ml: '',
         cases: '',
         amount: ''
       });
@@ -103,22 +119,21 @@ const WarehousePaymentPage = () => {
           control={control}
           name="warehouse_name"
           rules={{ required: 'Warehouse name is required' }}
-          render={({ field: { onChange, value } }) => (
-            <View style={[styles.pickerContainer, errors.warehouse_name && styles.errorInput]}>
-              <Picker
-                selectedValue={value}
-                style={styles.picker}
-                onValueChange={onChange}
-                dropdownIconColor={colors.primary}
+          render={({ field: { value } }) => (
+            <>
+              <TouchableOpacity 
+                style={[styles.brandInput, errors.warehouse_name && styles.errorInput]}
+                onPress={() => setWarehouseModalVisible(true)}
               >
-                {warehouses.map((warehouse) => (
-                  <Picker.Item key={warehouse} label={warehouse} value={warehouse} />
-                ))}
-              </Picker>
+                <Text style={value ? styles.pickerText : styles.placeholderText}>
+                  {value || 'Select Warehouse'}
+                </Text>
+                <Icon name="arrow-drop-down" size={24} color={colors.primary} />
+              </TouchableOpacity>
               {errors.warehouse_name && (
                 <Text style={styles.errorText}>{errors.warehouse_name.message}</Text>
               )}
-            </View>
+            </>
           )}
         />
       </View>
@@ -175,12 +190,12 @@ const WarehousePaymentPage = () => {
         <Text style={styles.label}>Brand *</Text>
         <Controller
           control={control}
-          name="brand_name"
+          name="brand"
           rules={{ required: 'Brand is required' }}
           render={({ field: { value } }) => (
             <>
               <TouchableOpacity 
-                style={[styles.brandInput, errors.brand_name && styles.errorInput]}
+                style={[styles.brandInput, errors.brand && styles.errorInput]}
                 onPress={() => setBrandModalVisible(true)}
               >
                 <Text style={value ? styles.pickerText : styles.placeholderText}>
@@ -188,8 +203,33 @@ const WarehousePaymentPage = () => {
                 </Text>
                 <Icon name="arrow-drop-down" size={24} color={colors.primary} />
               </TouchableOpacity>
-              {errors.brand_name && (
-                <Text style={styles.errorText}>{errors.brand_name.message}</Text>
+              {errors.brand && (
+                <Text style={styles.errorText}>{errors.brand.message}</Text>
+              )}
+            </>
+          )}
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>Volume (ml) *</Text>
+        <Controller
+          control={control}
+          name="volume_ml"
+          rules={{ required: 'Volume is required' }}
+          render={({ field: { onChange, onBlur, value } }) => (
+            <>
+              <TextInput
+                style={[styles.input, errors.volume_ml && styles.errorInput]}
+                value={value}
+                onBlur={onBlur}
+                onChangeText={onChange}
+                placeholder="Enter Volume in ml"
+                keyboardType="numeric"
+                editable={false}
+              />
+              {errors.volume_ml && (
+                <Text style={styles.errorText}>{errors.volume_ml.message}</Text>
               )}
             </>
           )}
@@ -298,12 +338,60 @@ const WarehousePaymentPage = () => {
               <TouchableOpacity
                 style={styles.brandItem}
                 onPress={() => {
-                  setValue('brand_name', item.brand_name);
+                  setValue('brand', item.brand_name);
+                  setValue('volume_ml', item.volume_ml.toString());
                   setBrandModalVisible(false);
                   setSearchQuery('');
                 }}
               >
-                <Text style={styles.brandText}>{item.brand_name}</Text>
+                <Text style={styles.brandText}>
+                  {item.brand_name} ({item.volume_ml}ml)
+                </Text>
+              </TouchableOpacity>
+            )}
+            contentContainerStyle={styles.listContent}
+          />
+        </View>
+      </Modal>
+
+      {/* Warehouse Selection Modal */}
+      <Modal
+        visible={warehouseModalVisible}
+        animationType="slide"
+        transparent={false}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.searchContainer}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search warehouses..."
+              value={warehouseSearchQuery}
+              onChangeText={setWarehouseSearchQuery}
+              autoFocus={true}
+            />
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => {
+                setWarehouseModalVisible(false);
+                setWarehouseSearchQuery('');
+              }}
+            >
+              <Icon name="close" size={24} color={colors.danger} />
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            data={filteredWarehouses}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.brandItem}
+                onPress={() => {
+                  setValue('warehouse_name', item.warehouse_name);
+                  setWarehouseModalVisible(false);
+                  setWarehouseSearchQuery('');
+                }}
+              >
+                <Text style={styles.brandText}>{item.warehouse_name} ({item.liquor_type})</Text>
               </TouchableOpacity>
             )}
             contentContainerStyle={styles.listContent}
@@ -363,17 +451,6 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontSize: 12,
     marginTop: 5,
-  },
-  pickerContainer: {
-    borderWidth: 1,
-    borderColor: colors.grayDark,
-    borderRadius: 8,
-    backgroundColor: colors.white,
-    overflow: 'hidden',
-  },
-  picker: {
-    height: 50,
-    width: '100%',
   },
   pickerText: {
     flex: 1,

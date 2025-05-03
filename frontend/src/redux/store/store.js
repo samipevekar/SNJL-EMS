@@ -9,6 +9,7 @@ import saleSheetSlice from '../slice/saleSheetSlice'
 import brandSlice from '../slice/brandSlice'
 import stockIncrementSlice from '../slice/stockIncrementSlice'
 import attendanceSlice from '../slice/attendanceSlice'
+import warehouseSlice from '../slice/warehouseSlice'
 
 export const store = configureStore({
     reducer: {
@@ -21,6 +22,7 @@ export const store = configureStore({
         saleSheet: saleSheetSlice,
         brand: brandSlice,
         stockIncrement: stockIncrementSlice,
-        attendance: attendanceSlice
+        attendance: attendanceSlice,
+        warehouse: warehouseSlice
     }
 })

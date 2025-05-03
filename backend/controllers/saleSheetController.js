@@ -9,10 +9,12 @@ export const createSaleSheet = async (req, res) => {
     sale,
     expenses,
     upi,
+    sale_date // Add sale_date from request body
   } = req.body;
 
   try {
-    const currentDate = new Date().toISOString().split("T")[0];
+    // Use sale_date from request if provided, otherwise use current date
+    const currentDate = sale_date || new Date().toISOString().split("T")[0];
 
     // Check for existing sale sheet
     const existingSheet = await query(
@@ -21,7 +23,7 @@ export const createSaleSheet = async (req, res) => {
     );
 
     if(existingSheet.rowCount > 0){
-      return res.status(400).json({ message: "Sale sheet already exists for today"})
+      return res.status(400).json({ message: "Sale sheet already exists for this date"})
     }
 
     const shop = await query(`SELECT * FROM shops WHERE shop_id = $1`, [
@@ -90,8 +92,6 @@ export const createSaleSheet = async (req, res) => {
       }
     }
 
-    
-
     // check if sale is greater than opening_balance
     if (sale > opening_balance) {
       return res.status(400).json({ 
@@ -110,9 +110,10 @@ export const createSaleSheet = async (req, res) => {
     const net_cash = daily_sale - total_expenses + canteen;
     const cash_in_hand = (net_cash - upi) || 0;
 
+    // Use the sale_date for both sale_date and created_at fields if provided
     const result = await query(
-      `INSERT INTO sale_sheets (shop_id, liquor_type, brand_name, volume_ml, opening_balance, sale, mrp, daily_sale, closing_balance, expenses, upi, net_cash, canteen, cash_in_hand) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,$14) RETURNING *`,
+      `INSERT INTO sale_sheets (shop_id, liquor_type, brand_name, volume_ml, opening_balance, sale, mrp, daily_sale, closing_balance, expenses, upi, net_cash, canteen, cash_in_hand, sale_date, created_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
       [
         shop_id,
         liquor_type,
@@ -127,7 +128,9 @@ export const createSaleSheet = async (req, res) => {
         upi,
         net_cash,
         canteen,
-        cash_in_hand
+        cash_in_hand,
+        currentDate,
+        sale_date ? new Date(sale_date) : new Date() // Use sale_date for created_at if provided
       ]
     );
 

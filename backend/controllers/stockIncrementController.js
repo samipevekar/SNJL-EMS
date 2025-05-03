@@ -9,10 +9,13 @@ export const addStockIncrement = async (req, res) => {
     volume_ml,
     warehouse_name,
     cases,
+    stock_date // Add stock_date from request body
   } = req.body;
 
   try {
-    const currentDate = new Date().toISOString().split("T")[0];
+    // Use stock_date from request if provided, otherwise use current date
+    const currentDate = stock_date || new Date().toISOString().split("T")[0];
+    const createdAt = stock_date ? new Date(stock_date) : new Date();
 
     // Get shop details
     const shop = await query(`SELECT * FROM shops WHERE shop_id = $1`, [shop_id]);
@@ -39,12 +42,22 @@ export const addStockIncrement = async (req, res) => {
     const { cost_price_per_case, duty, pieces_per_case } = brandData.rows[0];
     const pieces = cases * pieces_per_case;
 
-    // Always create new stock_increment
+    // Always create new stock_increment with created_at and updated_at based on stock_date
     const result = await query(
       `INSERT INTO stock_increments 
-       (shop_id, bill_id, brand_name, volume_ml, warehouse_name, cases, pieces)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [shop_id, bill_id, brand_name, volume_ml, warehouse_name, cases, pieces]
+       (shop_id, bill_id, brand_name, volume_ml, warehouse_name, cases, pieces, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [
+        shop_id, 
+        bill_id, 
+        brand_name, 
+        volume_ml, 
+        warehouse_name, 
+        cases, 
+        pieces,
+        createdAt,
+        createdAt
+      ]
     );
 
     const stockIncrementId = result.rows[0].id;
@@ -69,7 +82,10 @@ export const addStockIncrement = async (req, res) => {
       );
     }
 
-    // Update MGQ
+    // Update MGQ - use the month from the stock_date if provided
+    const dateForMgq = stock_date ? new Date(stock_date) : new Date();
+    const month = dateForMgq.getMonth() + 1;
+
     if (liquor_type === "country") {
       await query(
         `UPDATE shops 
@@ -78,7 +94,6 @@ export const addStockIncrement = async (req, res) => {
         [cases, shop_id]
       );
     } else {
-      const month = new Date().getMonth() + 1;
       let quarterField = "mgq_q1";
       if (month <= 3) quarterField = "mgq_q1";
       else if (month <= 6) quarterField = "mgq_q2";
@@ -110,8 +125,8 @@ export const addStockIncrement = async (req, res) => {
 
     await query(
       `INSERT INTO warehouse_balance_sheets 
-       (type, date, details, debit, credit, balance,stock_increment_id)
-       VALUES ($1, $2, $3, $4, $5, $6,$7)`,
+       (type, date, details, debit, credit, balance, stock_increment_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         warehouse_name,
         currentDate,
@@ -134,8 +149,8 @@ export const addStockIncrement = async (req, res) => {
 
     await query(
       `INSERT INTO warehouse_balance_sheets 
-       (type, date, details, debit, credit, balance,stock_increment_id)
-       VALUES ($1, $2, $3, $4, $5, $6,$7)`,
+       (type, date, details, debit, credit, balance, stock_increment_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         "all",
         currentDate,
@@ -361,7 +376,7 @@ export const getStockIncrementBrands = async (req, res) => {
     const { shop_id } = req.params;
   
     if (!shop_id) {
-      return res.status(400).json({ success: false, message: "shop_id is required" });
+      return res.status(400).json({ success: false, error: "shop_id is required" });
     }
 
     const shop = await query(
@@ -373,7 +388,7 @@ export const getStockIncrementBrands = async (req, res) => {
     )
 
     if(shop.rowCount == 0){
-        return res.status(404).json({ success: false, message: "Shop not found"})
+        return res.status(404).json({ success: false, error: "Shop not found"})
     }
 
     try {

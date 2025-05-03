@@ -137,7 +137,8 @@ CREATE TABLE warehouse_payments (
     liquor_type VARCHAR(20) CHECK (liquor_type IN ('country', 'foreign')) NOT NULL,
     cases INT,
 	amount INT NOT NULL,
-    payment_date TIMESTAMP DEFAULT NOW()
+    payment_date TIMESTAMP DEFAULT NOW(),
+    volume_ml INT NOT NULL DEFAULT 180
 );
 
 -- balance_sheets table
@@ -176,3 +177,10 @@ CREATE TABLE attendance (
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     attendance_date DATE NOT NULL DEFAULT CURRENT_DATE
 );
+
+-- warehouses table
+CREATE TABLE warehouses (
+	id SERIAL PRIMARY KEY,
+	warehouse_name VARCHAR(100) NOT NULL,
+	liquor_type VARCHAR(50) NOT NULL
+)

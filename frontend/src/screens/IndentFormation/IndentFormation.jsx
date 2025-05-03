@@ -25,7 +25,11 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import RNHTMLtoPDF from 'react-native-html-to-pdf';
 import Share from 'react-native-share';
-import {getBrandsAsync, selectBrands} from '../../redux/slice/brandSlice';
+import {
+  clearBrands,
+  getBrandsAsync,
+  selectBrands,
+} from '../../redux/slice/brandSlice';
 import colors from '../../theme/colors';
 
 const {width} = Dimensions.get('window');
@@ -47,8 +51,12 @@ const IndentFormation = () => {
   const [previewData, setPreviewData] = useState(null);
 
   useEffect(() => {
-    dispatch(getBrandsAsync({type: 'foreign'}));
-  }, []);
+    dispatch(getBrandsAsync({type:''}));
+
+    return ()=>{
+      dispatch(clearBrands())
+    }
+  }, [dispatch]);
 
   const {
     control,
@@ -146,9 +154,15 @@ const IndentFormation = () => {
               .join('')}
             <tr>
               <td style="padding: 8px;" colspan="2"><strong>Total</strong></td>
-              <td style="padding: 8px;"><strong>${previewData?.total_cases}</strong></td>
-              <td style="padding: 8px;"><strong>${previewData?.total_duty}</strong></td>
-              <td style="padding: 8px;"><strong>${previewData?.total_cost_price}</strong></td>
+              <td style="padding: 8px;"><strong>${
+                previewData?.total_cases
+              }</strong></td>
+              <td style="padding: 8px;"><strong>${
+                previewData?.total_duty
+              }</strong></td>
+              <td style="padding: 8px;"><strong>${
+                previewData?.total_cost_price
+              }</strong></td>
             </tr>
           </tbody>
         </table>
@@ -204,7 +218,11 @@ const IndentFormation = () => {
                     style={value ? styles.pickerText : styles.placeholderText}>
                     {value || 'Select Brand'}
                   </Text>
-                  <Icon name="arrow-drop-down" size={24} color={colors.primary} />
+                  <Icon
+                    name="arrow-drop-down"
+                    size={24}
+                    color={colors.primary}
+                  />
                 </TouchableOpacity>
                 {errors.brand?.[index]?.brand_name && (
                   <Text style={styles.errorText}>
@@ -229,7 +247,10 @@ const IndentFormation = () => {
             }}
             render={({field: {onChange, value}}) => (
               <TextInput
-                style={[styles.input, errors.brand?.[index]?.volume_ml && styles.errorInput]}
+                style={[
+                  styles.input,
+                  errors.brand?.[index]?.volume_ml && styles.errorInput,
+                ]}
                 value={value}
                 onChangeText={onChange}
                 keyboardType="numeric"
@@ -255,7 +276,10 @@ const IndentFormation = () => {
             }}
             render={({field: {onChange, value}}) => (
               <TextInput
-                style={[styles.input, errors.brand?.[index]?.cases && styles.errorInput]}
+                style={[
+                  styles.input,
+                  errors.brand?.[index]?.cases && styles.errorInput,
+                ]}
                 value={value}
                 onChangeText={onChange}
                 keyboardType="numeric"
@@ -297,9 +321,9 @@ const IndentFormation = () => {
           render={({field: {onChange, value}}) => (
             <TextInput
               style={[
-                styles.input, 
+                styles.input,
                 shopIdLocked && styles.disabledInput,
-                errors.shop_id && styles.errorInput
+                errors.shop_id && styles.errorInput,
               ]}
               value={value}
               onChangeText={onChange}
@@ -379,12 +403,20 @@ const IndentFormation = () => {
               <TouchableOpacity
                 style={styles.brandItem}
                 onPress={() => {
-                  setValue(`brand.${currentBrandIndex}.brand_name`, item.brand_name);
-                  setValue(`brand.${currentBrandIndex}.volume_ml`, item.volume_ml.toString());
+                  setValue(
+                    `brand.${currentBrandIndex}.brand_name`,
+                    item.brand_name,
+                  );
+                  setValue(
+                    `brand.${currentBrandIndex}.volume_ml`,
+                    item.volume_ml.toString(),
+                  );
                   setBrandModalVisible(false);
                   setSearchQuery('');
                 }}>
-                <Text style={styles.brandText}>{item.brand_name} ({item.volume_ml}ml)</Text>
+                <Text style={styles.brandText}>
+                  {item.brand_name} ({item.volume_ml}ml)
+                </Text>
               </TouchableOpacity>
             )}
             contentContainerStyle={styles.listContent}
@@ -410,14 +442,19 @@ const IndentFormation = () => {
             <ScrollView style={styles.previewScroll}>
               <View style={styles.previewSection}>
                 <Text style={styles.previewLabel}>
-                  Shop ID: <Text style={styles.previewValue}>{previewData?.shop_id}</Text>
+                  Shop ID:{' '}
+                  <Text style={styles.previewValue}>
+                    {previewData?.shop_id}
+                  </Text>
                 </Text>
                 <Text style={styles.previewLabel}>
                   Date:{' '}
                   <Text style={styles.previewValue}>
-                    {previewData?.indent_date ? 
-                      new Date(previewData.indent_date).toLocaleDateString('en-GB') : 
-                      new Date().toLocaleDateString('en-GB')}
+                    {previewData?.indent_date
+                      ? new Date(previewData.indent_date).toLocaleDateString(
+                          'en-GB',
+                        )
+                      : new Date().toLocaleDateString('en-GB')}
                   </Text>
                 </Text>
               </View>
@@ -450,9 +487,15 @@ const IndentFormation = () => {
                     Total
                   </Text>
                   <Text style={styles.tableFooterText}></Text>
-                  <Text style={styles.tableFooterText}>{previewData?.total_cases}</Text>
-                  <Text style={styles.tableFooterText}>{previewData?.total_duty}</Text>
-                  <Text style={styles.tableFooterText}>{previewData?.total_cost_price}</Text>
+                  <Text style={styles.tableFooterText}>
+                    {previewData?.total_cases}
+                  </Text>
+                  <Text style={styles.tableFooterText}>
+                    {previewData?.total_duty}
+                  </Text>
+                  <Text style={styles.tableFooterText}>
+                    {previewData?.total_cost_price}
+                  </Text>
                 </View>
               </View>
             </ScrollView>
@@ -509,7 +552,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#495057',
     marginBottom: 5,
-    fontWeight: '500',
+    fontWeight: '700',
   },
   input: {
     height: 50,

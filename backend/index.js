@@ -11,6 +11,7 @@ import indentRoutes from './routes/indentformationRoutes.js';
 import attedanceRoutes from './routes/attendanceRoutes.js';
 import balanceSheetRoutes from './routes/balanceSheetRoutes.js';
 import stockIncrementRoutes from './routes/stockIncrementRoutes.js';
+import warehouseRoutes from './routes/warehouseRoutes.js'
 import cron from 'node-cron'
 import axios from 'axios';
 import dotenv from 'dotenv';
@@ -41,6 +42,7 @@ app.use("/api/indent", indentRoutes);
 app.use("/api/attendance", attedanceRoutes);
 app.use("/api/balance-sheet", balanceSheetRoutes);
 app.use("/api/stock-increment", stockIncrementRoutes);
+app.use("/api/warehouse", warehouseRoutes)
 
 cron.schedule('*/4 * * * *', async () => {
   try {
@@ -52,6 +54,7 @@ cron.schedule('*/4 * * * *', async () => {
       console.error('Error pinging the server:', error.message);
   }
 });
+
 
 app.listen(port, () => {
   console.log("Server running locally on port 4000");

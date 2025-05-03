@@ -8,6 +8,7 @@ export const addPayment = async (req, res) => {
     brand,
     cases,
     amount,
+    volume_ml,
     shop_id,
   } = req.body;
 
@@ -27,10 +28,10 @@ export const addPayment = async (req, res) => {
     }
 
     const payment = await query(
-      `INSERT INTO warehouse_payments (user_id, warehouse_name, bill_id, brand, cases, amount, shop_id, liquor_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO warehouse_payments (user_id, warehouse_name, bill_id, brand, cases, amount, shop_id, liquor_type,volume_ml)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8,$9)
        RETURNING *`,
-      [user_id, warehouse_name, bill_id, brand, cases, amount, shop_id, liquor_type]
+      [user_id, warehouse_name, bill_id, brand, cases, amount, shop_id, liquor_type,volume_ml]
     );
 
     const paymentId = payment.rows[0].id;
@@ -83,7 +84,7 @@ export const addPayment = async (req, res) => {
 
 export const updatePayment = async (req, res) => {
   const { id } = req.params;
-  const { amount, brand, cases } = req.body;
+  const { amount, brand, cases, volume_ml } = req.body;
 
   try {
     const paymentRes = await query(`SELECT * FROM warehouse_payments WHERE id = $1`, [id]);
@@ -97,9 +98,9 @@ export const updatePayment = async (req, res) => {
     // ✅ Update the warehouse_payment record
     await query(
       `UPDATE warehouse_payments 
-       SET amount = COALESCE($1, amount), brand = COALESCE($2, brand), cases = COALESCE($3, cases)
-       WHERE id = $4`,
-      [amount, brand, cases, id]
+       SET amount = COALESCE($1, amount), brand = COALESCE($2, brand), cases = COALESCE($3, cases), volume_ml = COALESCE($4,volume_ml)
+       WHERE id = $5`,
+      [amount, brand, cases,volume_ml, id]
     );
 
     // 🔁 Update balance_sheets and warehouse_balance_sheets

@@ -14,28 +14,33 @@ import {
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { useDispatch, useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import colors from '../../theme/colors';
 import { addStockIncrement, resetAddStockStatus, selectAddStockError, selectAddStockStatus } from '../../redux/slice/stockIncrementSlice';
 import { clearBrands, getBrandsAsync, selectBrands, selectBrandsStatus } from '../../redux/slice/brandSlice';
 import { selectUser } from '../../redux/slice/authSlice';
-import { getWarehousesAsync, selectWarehouses } from '../../redux/slice/warehouseSlice';
+import { getWarehousesAsync, selectWarehouses, selectWarehouseStatus } from '../../redux/slice/warehouseSlice';
 import { getShopByIdAsync, selectSpecificShop } from '../../redux/slice/shopSlice';
 
-const StockIncrementForm = () => {
+const PreviousStockIncrementForm = () => {
   const dispatch = useDispatch();
   const brandOptions = useSelector(selectBrands);
-  const warehouseOptions = useSelector(selectWarehouses); // Your warehouse options
+  const warehouseOptions = useSelector(selectWarehouses);
   const status = useSelector(selectAddStockStatus);
   const error = useSelector(selectAddStockError);
   const user = useSelector(selectUser);
-  const shop = useSelector(selectSpecificShop)
-  const brandStatus = useSelector(selectBrandsStatus)
+  const shop = useSelector(selectSpecificShop);
+  const brandStatus = useSelector(selectBrandsStatus);
+  const warehouseStatus = useSelector(selectWarehouseStatus);
 
   const [brandModalVisible, setBrandModalVisible] = useState(false);
   const [warehouseModalVisible, setWarehouseModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentBrandIndex, setCurrentBrandIndex] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [shopId, setShopId] = useState('');
+  const [stockDate, setStockDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const { 
     control, 
@@ -60,17 +65,26 @@ const StockIncrementForm = () => {
   const watchBrands = watch('brands');
 
   const onSubmit = (data) => {
+    if (!shopId) {
+      Alert.alert('Error', 'Please enter Shop ID');
+      return;
+    }
+
     setLoading(true);
+    
+    // Format the date to YYYY-MM-DD
+    const formattedDate = stockDate.toISOString().split('T')[0];
     
     // Process each brand entry
     const promises = data.brands.map(brand => {
       const stockData = {
-        shop_id: user?.assigned_shops[0],
+        shop_id: shopId,
         bill_id: Number(data.bill_id),
         brand_name: brand.brand_name,
         volume_ml: Number(brand.volume_ml),
         warehouse_name: data.warehouse_name,
         cases: Number(brand.cases),
+        stock_date: formattedDate // Include the stock_date in the request
       };
       
       return dispatch(addStockIncrement(stockData)).unwrap();
@@ -97,25 +111,11 @@ const StockIncrementForm = () => {
     }
   }, [status, error]);
 
-  useEffect(() => {
-    if (user) {
-      dispatch(getShopByIdAsync(user.assigned_shops[0]))
-        .unwrap()
-        .then((shopData) => {
-          dispatch(clearBrands())
-          if (shopData?.liquor_type) {
-            dispatch(getBrandsAsync({ type: shopData.liquor_type }));
-          }
-        });
-    }
-    dispatch(getWarehousesAsync());
+  useEffect(() => {  
+    dispatch(getBrandsAsync({type:''}))
+    dispatch(getWarehousesAsync())
+  }, [])
   
-    return () => {
-      dispatch(clearBrands());
-    };
-  }, [user?.assigned_shops[0]]); // This effect runs when the assigned shop changes
-
-
 
   const filteredBrands = brandOptions.filter(brand =>
     brand.brand_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -127,6 +127,12 @@ const StockIncrementForm = () => {
 
   const handleRemoveBrand = (index) => {
     remove(index);
+  };
+
+  const onChangeDate = (event, selectedDate) => {
+    const currentDate = selectedDate || stockDate;
+    setShowDatePicker(false);
+    setStockDate(currentDate);
   };
 
   const renderBrandItem = ({ item, index }) => (
@@ -193,7 +199,7 @@ const StockIncrementForm = () => {
               onBlur={onBlur}
               value={value}
               placeholder="Enter volume in ml"
-              editable={false} // Volume will be auto-filled when brand is selected
+              editable={false}
             />
           )}
         />
@@ -238,7 +244,46 @@ const StockIncrementForm = () => {
       style={styles.container}
       contentContainerStyle={styles.scrollContent}
     >
-      <Text style={styles.heading}>Add Stock</Text>
+      <Text style={styles.heading}>Add Previous Stock</Text>
+
+      {/* Shop ID */}
+      <View style={styles.fieldContainer}>
+        <Text style={styles.label}>Shop ID *</Text>
+        <TextInput
+          style={[styles.input]}
+          keyboardType="numeric"
+          onChangeText={setShopId}
+          value={shopId}
+          placeholder="Enter shop ID"
+        />
+        {/* <TouchableOpacity
+          style={styles.fetchButton}
+          onPress={handleFetchShopAndBrands}
+        >
+          <Text style={styles.fetchButtonText}>Fetch Shop Details</Text>
+        </TouchableOpacity> */}
+      </View>
+
+      {/* Stock Date */}
+      <View style={styles.fieldContainer}>
+        <Text style={styles.label}>Stock Date *</Text>
+        <TouchableOpacity
+          style={styles.input}
+          onPress={() => setShowDatePicker(true)}
+        >
+          <Text>{stockDate.toLocaleDateString()}</Text>
+          <Icon name="calendar-today" size={20} color={colors.primary} />
+        </TouchableOpacity>
+        {showDatePicker && (
+          <DateTimePicker
+            value={stockDate}
+            mode="date"
+            display="default"
+            onChange={onChangeDate}
+            maximumDate={new Date()}
+          />
+        )}
+      </View>
 
       {/* Warehouse Name */}
       <View style={styles.fieldContainer}>
@@ -339,7 +384,7 @@ const StockIncrementForm = () => {
             </TouchableOpacity>
           </View>
           
-          <FlatList
+          {warehouseStatus === 'loading' ? <ActivityIndicator size={'large'} color={colors.primary}/> : <FlatList
             data={warehouseOptions}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
@@ -354,7 +399,7 @@ const StockIncrementForm = () => {
               </TouchableOpacity>
             )}
             contentContainerStyle={styles.listContent}
-          />
+          />}
         </View>
       </Modal>
 
@@ -552,7 +597,6 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 17,
     fontWeight: '600',
-
   },
   modalHeader: {
     flexDirection: 'row',
@@ -577,6 +621,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textPrimary,
   },
+  fetchButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  fetchButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
 
-export default StockIncrementForm;
+export default PreviousStockIncrementForm;

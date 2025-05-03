@@ -165,12 +165,41 @@ const Home = () => {
       screen: 'ShopManagementPage',
       roles: ['super_user'],
     },
+    {
+      title: 'Record Previous Sale Sheets',
+      icon: 'arrow-left',
+      screen: 'PreviousRecordSalePage',
+      roles: ['super_user','manager'],
+    },
+    {
+      title: 'Previous Stock Increment',
+      icon: 'arrow-left',
+      screen: 'PreviousStockIncrementForm',
+      roles: ['super_user','manager'],
+    },
   ];
 
   const visibleMenuItems = useMemo(() => {
     if (!user?.role) return [];
-    return allMenuItems.filter(item => item.roles.includes(user.role));
-  }, [user?.role]);
+    
+    const baseItems = allMenuItems.filter(item => 
+      item.roles.includes(user.role) && item.title !== 'Indent Formation'
+    );
+    
+    // Only add Indent Formation if liquor_type is foreign
+    // if(shop){
+      if (user?.role === 'manager' || user?.role === 'super_user' || shop?.liquor_type === 'foreign') {
+        const indentItem = allMenuItems.find(item => 
+          item.title === 'Indent Formation' && item.roles.includes(user.role)
+        );
+        if (indentItem) {
+          return [...baseItems, indentItem];
+        }
+      }
+    // }
+    
+    return baseItems;
+  }, [user?.role, shop?.liquor_type]);
 
   if (!user?.id) {
     return (
