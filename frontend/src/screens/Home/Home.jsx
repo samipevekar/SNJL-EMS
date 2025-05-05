@@ -166,6 +166,12 @@ const Home = () => {
       roles: ['super_user'],
     },
     {
+      title: 'Add Brands',
+      icon: 'plus',
+      screen: 'BrandManagement',
+      roles: ['super_user','manager'],
+    },
+    {
       title: 'Record Previous Sale Sheets',
       icon: 'arrow-left',
       screen: 'PreviousRecordSalePage',
