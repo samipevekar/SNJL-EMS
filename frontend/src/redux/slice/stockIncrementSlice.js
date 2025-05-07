@@ -1,4 +1,3 @@
-// stockIncrementBrandsSlice.js
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import axiosInstance from "../../Helpers/axiosinstance";
 
@@ -7,7 +6,9 @@ const initialState = {
   status: 'idle',
   error: null,
   addStockStatus: 'idle',
-  addStockError: null
+  addStockError: null,
+  updateStockStatus: 'idle',
+  updateStockError: null
 }
 
 export const fetchStockIncrementBrands = createAsyncThunk(
@@ -17,6 +18,7 @@ export const fetchStockIncrementBrands = createAsyncThunk(
       const response = await axiosInstance.get(`/stock-increment/${shop_id}`);
       return response.data;
     } catch (error) {
+      console.log(error)
       return rejectWithValue(error.response?.data?.error || "Failed to fetch brands");
     }
   }
@@ -34,6 +36,19 @@ export const addStockIncrement = createAsyncThunk(
   }
 );
 
+export const updateStockIncrement = createAsyncThunk(
+  'stockIncrement/update',
+  async ({ id, stockData }, { rejectWithValue }) => {
+    try {
+      const response = await axiosInstance.patch(`/stock-increment/${id}`, stockData);
+      return response.data;
+    } catch (error) {
+      console.log(error)
+      return rejectWithValue(error.response?.data?.error || "Failed to update stock increment");
+    }
+  }
+);
+
 const stockIncrementSlice = createSlice({
   name: "stockIncrement",
   initialState,
@@ -46,6 +61,10 @@ const stockIncrementSlice = createSlice({
     resetAddStockStatus: (state) => {
       state.addStockStatus = 'idle';
       state.addStockError = null;
+    },
+    resetUpdateStockStatus: (state) => {
+      state.updateStockStatus = 'idle';
+      state.updateStockError = null;
     }
   },
   extraReducers: (builder) => {
@@ -73,11 +92,23 @@ const stockIncrementSlice = createSlice({
       .addCase(addStockIncrement.rejected, (state, action) => {
         state.addStockStatus = 'failed';
         state.addStockError = action.payload;
+      })
+      
+      // Update stock increment reducers
+      .addCase(updateStockIncrement.pending, (state) => {
+        state.updateStockStatus = 'loading';
+      })
+      .addCase(updateStockIncrement.fulfilled, (state) => {
+        state.updateStockStatus = 'succeeded';
+      })
+      .addCase(updateStockIncrement.rejected, (state, action) => {
+        state.updateStockStatus = 'failed';
+        state.updateStockError = action.payload;
       });
   }
 });
 
-export const { clearBrands, resetAddStockStatus } = stockIncrementSlice.actions;
+export const { clearBrands, resetAddStockStatus, resetUpdateStockStatus } = stockIncrementSlice.actions;
 
 // Selectors
 export const selectStockIncrementBrands = (state) => state.stockIncrement.brands;
@@ -85,5 +116,7 @@ export const selectStockIncrementBrandsStatus = (state) => state.stockIncrement.
 export const selectStockIncrementBrandsError = (state) => state.stockIncrement.error;
 export const selectAddStockStatus = (state) => state.stockIncrement.addStockStatus;
 export const selectAddStockError = (state) => state.stockIncrement.addStockError;
+export const selectUpdateStockStatus = (state) => state.stockIncrement.updateStockStatus;
+export const selectUpdateStockError = (state) => state.stockIncrement.updateStockError;
 
 export default stockIncrementSlice.reducer;

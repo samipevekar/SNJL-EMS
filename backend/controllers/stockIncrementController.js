@@ -9,8 +9,10 @@ export const addStockIncrement = async (req, res) => {
     volume_ml,
     warehouse_name,
     cases,
-    stock_date // Add stock_date from request body
+    stock_date, // Add stock_date from request body
   } = req.body;
+
+  console.log(req.body);
 
   try {
     // Use stock_date from request if provided, otherwise use current date
@@ -18,9 +20,11 @@ export const addStockIncrement = async (req, res) => {
     const createdAt = stock_date ? new Date(stock_date) : new Date();
 
     // Get shop details
-    const shop = await query(`SELECT * FROM shops WHERE shop_id = $1`, [shop_id]);
+    const shop = await query(`SELECT * FROM shops WHERE shop_id = $1`, [
+      shop_id,
+    ]);
     if (shop.rowCount === 0) {
-      return res.status(404).json({ message: "Shop not found" });
+      return res.status(404).json({ error: "Shop not found" });
     }
 
     const liquor_type = shop.rows[0].liquor_type;
@@ -48,15 +52,15 @@ export const addStockIncrement = async (req, res) => {
        (shop_id, bill_id, brand_name, volume_ml, warehouse_name, cases, pieces, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
       [
-        shop_id, 
-        bill_id, 
-        brand_name, 
-        volume_ml, 
-        warehouse_name, 
-        cases, 
+        shop_id,
+        bill_id,
+        brand_name,
+        volume_ml,
+        warehouse_name,
+        cases,
         pieces,
         createdAt,
-        createdAt
+        createdAt,
       ]
     );
 
@@ -134,7 +138,7 @@ export const addStockIncrement = async (req, res) => {
         0,
         creditValue,
         newBalanceWarehouse,
-        stockIncrementId
+        stockIncrementId,
       ]
     );
 
@@ -158,7 +162,7 @@ export const addStockIncrement = async (req, res) => {
         0,
         creditValue,
         newBalanceAllWarehouse,
-        stockIncrementId
+        stockIncrementId,
       ]
     );
 
@@ -173,14 +177,13 @@ export const addStockIncrement = async (req, res) => {
   }
 };
 
-// update stock increment
 export const updateStockIncrement = async (req, res) => {
   const { id } = req.params;
   const {
-    shop_id,
+    shop_id: newShopId,
     bill_id,
-    brand_name,
-    volume_ml,
+    brand_name: newBrandName,
+    volume_ml: newVolumeMl,
     warehouse_name,
     cases: newCases,
   } = req.body;
@@ -194,18 +197,30 @@ export const updateStockIncrement = async (req, res) => {
       [id]
     );
     if (existingIncrement.rowCount === 0) {
-      return res.status(404).json({ message: "Stock increment not found" });
+      return res.status(404).json({ error: "Stock increment not found" });
     }
 
     const oldRecord = existingIncrement.rows[0];
     const oldCases = oldRecord.cases;
     const oldPieces = oldRecord.pieces;
     const oldWarehouse = oldRecord.warehouse_name;
+    const oldShopId = oldRecord.shop_id;
+    const oldBrandName = oldRecord.brand_name;
+    const oldVolumeMl = oldRecord.volume_ml;
+    const oldStockDate = oldRecord.stock_date;
 
-    // 2. Get shop and brand details
-    const shop = await query(`SELECT * FROM shops WHERE shop_id = $1`, [shop_id]);
+    // Check if any of the identifying fields have changed
+    const shopChanged = oldShopId !== newShopId;
+    const brandChanged = oldBrandName !== newBrandName;
+    const volumeChanged = oldVolumeMl !== newVolumeMl;
+    const anyIdentifierChanged = shopChanged || brandChanged || volumeChanged;
+
+    // 2. Get shop and brand details for the NEW values
+    const shop = await query(`SELECT * FROM shops WHERE shop_id = $1`, [
+      newShopId,
+    ]);
     if (shop.rowCount === 0) {
-      return res.status(404).json({ message: "Shop not found" });
+      return res.status(404).json({ error: "Shop not found" });
     }
 
     const liquor_type = shop.rows[0].liquor_type;
@@ -213,7 +228,7 @@ export const updateStockIncrement = async (req, res) => {
     const brandData = await query(
       `SELECT cost_price_per_case, duty, pieces_per_case FROM brands 
        WHERE brand_name = $1 AND liquor_type = $2 AND volume_ml = $3`,
-      [brand_name, liquor_type, volume_ml]
+      [newBrandName, liquor_type, newVolumeMl]
     );
 
     if (brandData.rowCount === 0) {
@@ -227,33 +242,122 @@ export const updateStockIncrement = async (req, res) => {
     const newPieces = newCases * pieces_per_case;
     const piecesDifference = newPieces - oldPieces;
 
-    // 3. Update the stock_increments record
+    // 3. Check if sales exist for the old stock that would be affected
+    if (anyIdentifierChanged) {
+      const salesExist = await query(
+        `SELECT 1 FROM sale_sheets 
+         WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3
+         AND sale_date >= $4
+         LIMIT 1`,
+        [oldShopId, oldBrandName, oldVolumeMl, oldStockDate]
+      );
+
+      if (salesExist.rowCount > 0) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Cannot change brand/shop/volume as sales already exist for this stock increment",
+        });
+      }
+    }
+
+    // 4. Check if we have enough stock to decrement when changing brands
+    if (brandChanged || volumeChanged) {
+      const latestSaleSheet = await query(
+        `SELECT closing_balance FROM sale_sheets 
+         WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3
+         ORDER BY sale_date DESC, created_at DESC LIMIT 1`,
+        [oldShopId, oldBrandName, oldVolumeMl]
+      );
+
+      if (latestSaleSheet.rowCount > 0) {
+        const currentBalance = latestSaleSheet.rows[0].closing_balance;
+        if (currentBalance < oldPieces) {
+          return res.status(400).json({
+            success: false,
+            error: `Insufficient stock to change brand. Current balance: ${currentBalance}, trying to remove: ${oldPieces}`,
+          });
+        }
+      }
+    }
+
+    // 5. Update the stock_increments record (always update the same record)
     const updatedIncrement = await query(
       `UPDATE stock_increments 
        SET shop_id = $1, bill_id = $2, brand_name = $3, volume_ml = $4, 
            warehouse_name = $5, cases = $6, pieces = $7, updated_at = CURRENT_TIMESTAMP
        WHERE id = $8 RETURNING *`,
-      [shop_id, bill_id, brand_name, volume_ml, warehouse_name, newCases, newPieces, id]
+      [
+        newShopId,
+        bill_id,
+        newBrandName,
+        newVolumeMl,
+        warehouse_name,
+        newCases,
+        newPieces,
+        id,
+      ]
     );
 
-    // 4. Update sale_sheets closing balance
-    const latestSaleSheet = await query(
-      `SELECT id, closing_balance FROM sale_sheets 
-       WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3 
-       ORDER BY sale_date DESC, created_at DESC LIMIT 1`,
-      [shop_id, brand_name, volume_ml]
-    );
-
-    if (latestSaleSheet.rowCount > 0) {
-      await query(
-        `UPDATE sale_sheets 
-         SET closing_balance = closing_balance + $1 
-         WHERE id = $2`,
-        [piecesDifference, latestSaleSheet.rows[0].id]
+    // 6. Handle sale_sheets updates
+    if (anyIdentifierChanged) {
+      // If brand or volume changed, we need to adjust the closing balances
+      
+      // First, find the old sale sheet record
+      const oldSaleSheet = await query(
+        `SELECT id, closing_balance FROM sale_sheets 
+         WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3 
+         ORDER BY sale_date DESC, created_at DESC LIMIT 1`,
+        [oldShopId, oldBrandName, oldVolumeMl]
       );
+
+      if (oldSaleSheet.rowCount > 0) {
+        // Reduce the old record's closing balance
+        await query(
+          `UPDATE sale_sheets 
+           SET closing_balance = closing_balance - $1 
+           WHERE id = $2`,
+          [oldPieces, oldSaleSheet.rows[0].id]
+        );
+      }
+
+      // Then find the new sale sheet record (must exist - we don't create new ones)
+      const newSaleSheet = await query(
+        `SELECT id, closing_balance FROM sale_sheets 
+         WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3 
+         ORDER BY sale_date DESC, created_at DESC LIMIT 1`,
+        [newShopId, newBrandName, newVolumeMl]
+      );
+
+      if (newSaleSheet.rowCount > 0) {
+        // Update existing sale sheet record
+        await query(
+          `UPDATE sale_sheets 
+           SET closing_balance = closing_balance + $1 
+           WHERE id = $2`,
+          [newPieces, newSaleSheet.rows[0].id]
+        );
+      } 
+    } else {
+      // Only cases changed, update normally
+      const latestSaleSheet = await query(
+        `SELECT id, closing_balance FROM sale_sheets 
+         WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3 
+         ORDER BY sale_date DESC, created_at DESC LIMIT 1`,
+        [newShopId, newBrandName, newVolumeMl]
+      );
+
+      if (latestSaleSheet.rowCount > 0) {
+        await query(
+          `UPDATE sale_sheets 
+           SET closing_balance = closing_balance + $1 
+           WHERE id = $2`,
+          [piecesDifference, latestSaleSheet.rows[0].id]
+        );
+      }
     }
 
-    // 5. Handle MGQ updates
+    // 7. Handle MGQ updates (same as before)
     const casesDifference = newCases - oldCases;
     if (casesDifference !== 0) {
       if (liquor_type === "country") {
@@ -261,7 +365,13 @@ export const updateStockIncrement = async (req, res) => {
           `UPDATE shops 
            SET monthly_mgq = monthly_mgq - $1, yearly_mgq = yearly_mgq - $1 
            WHERE shop_id = $2`,
-          [casesDifference, shop_id]
+          [oldCases, oldShopId]
+        );
+        await query(
+          `UPDATE shops 
+           SET monthly_mgq = monthly_mgq + $1, yearly_mgq = yearly_mgq + $1 
+           WHERE shop_id = $2`,
+          [newCases, newShopId]
         );
       } else {
         const month = new Date().getMonth() + 1;
@@ -271,31 +381,53 @@ export const updateStockIncrement = async (req, res) => {
         else if (month <= 9) quarterField = "mgq_q3";
         else quarterField = "mgq_q4";
 
-        const valueDifference = casesDifference * duty;
+        const oldBrandData = await query(
+          `SELECT duty FROM brands 
+           WHERE brand_name = $1 AND liquor_type = $2 AND volume_ml = $3`,
+          [oldBrandName, liquor_type, oldVolumeMl]
+        );
+
+        const oldDuty = oldBrandData.rowCount > 0 ? oldBrandData.rows[0].duty : 0;
+        const oldValue = oldCases * oldDuty;
+        const newValue = newCases * duty;
+
         await query(
           `UPDATE shops 
            SET ${quarterField} = ${quarterField} - $1 
            WHERE shop_id = $2`,
-          [valueDifference, shop_id]
+          [oldValue, oldShopId]
+        );
+        await query(
+          `UPDATE shops 
+           SET ${quarterField} = ${quarterField} + $1 
+           WHERE shop_id = $2`,
+          [newValue, newShopId]
         );
       }
     }
 
-    // 6. Update warehouse balances
-    const oldCreditValue = oldCases * cost_price_per_case;
-    const newCreditValue = newCases * cost_price_per_case;
-    const creditDifference = newCreditValue - oldCreditValue;
+    // 8. Update warehouse balances (same as before)
+    const oldBrandDataForWarehouse = await query(
+      `SELECT cost_price_per_case FROM brands 
+       WHERE brand_name = $1 AND liquor_type = $2 AND volume_ml = $3`,
+      [oldBrandName, liquor_type, oldVolumeMl]
+    );
 
-    // First find and update existing warehouse balance entries for this stock increment
+    const oldCostPrice = oldBrandDataForWarehouse.rowCount > 0
+      ? oldBrandDataForWarehouse.rows[0].cost_price_per_case
+      : 0;
+
+    const oldCreditValue = oldCases * oldCostPrice;
+    const newCreditValue = newCases * cost_price_per_case;
+
     const existingWarehouseEntries = await query(
       `SELECT id, type FROM warehouse_balance_sheets 
        WHERE stock_increment_id = $1`,
       [id]
     );
 
-    // Update existing entries or create new ones
     for (const entry of existingWarehouseEntries.rows) {
-      if (entry.type === 'all') {
+      if (entry.type === "all") {
         await query(
           `UPDATE warehouse_balance_sheets 
            SET credit = $1, balance = balance - $2 + $1 
@@ -312,54 +444,6 @@ export const updateStockIncrement = async (req, res) => {
       }
     }
 
-    // If no existing entries found (shouldn't happen but just in case)
-    if (existingWarehouseEntries.rowCount === 0) {
-      // For warehouse-specific entry
-      const prevWarehouseBalance = await query(
-        `SELECT balance FROM warehouse_balance_sheets 
-         WHERE type = $1 ORDER BY date DESC, id DESC LIMIT 1`,
-        [warehouse_name]
-      );
-      const warehouseBalance = Number(prevWarehouseBalance.rows[0]?.balance) || 0;
-      
-      await query(
-        `INSERT INTO warehouse_balance_sheets 
-         (type, date, details, debit, credit, balance, stock_increment_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          warehouse_name,
-          currentDate,
-          `Stock updated for shop ${shop_id}`,
-          0,
-          newCreditValue,
-          warehouseBalance + newCreditValue,
-          id
-        ]
-      );
-
-      // For 'all' entry
-      const prevAllBalance = await query(
-        `SELECT balance FROM warehouse_balance_sheets 
-         WHERE type = 'all' ORDER BY date DESC, id DESC LIMIT 1`
-      );
-      const allBalance = Number(prevAllBalance.rows[0]?.balance) || 0;
-      
-      await query(
-        `INSERT INTO warehouse_balance_sheets 
-         (type, date, details, debit, credit, balance, stock_increment_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          "all",
-          currentDate,
-          `Stock updated for shop ${shop_id}`,
-          0,
-          newCreditValue,
-          allBalance + newCreditValue,
-          id
-        ]
-      );
-    }
-
     res.json({
       success: true,
       message: "Stock increment updated successfully",
@@ -371,42 +455,56 @@ export const updateStockIncrement = async (req, res) => {
   }
 };
 
-
 export const getStockIncrementBrands = async (req, res) => {
-    const { shop_id } = req.params;
-  
-    if (!shop_id) {
-      return res.status(400).json({ success: false, error: "shop_id is required" });
-    }
+  const { shop_id } = req.params;
 
-    const shop = await query(
-        `
+  if (!shop_id) {
+    return res
+      .status(400)
+      .json({ success: false, error: "shop_id is required" });
+  }
+
+  const shop = await query(
+    `
         SELECT * FROM shops 
         WHERE shop_id = $1
         `,
-        [shop_id]
-    )
+    [shop_id]
+  );
 
-    if(shop.rowCount == 0){
-        return res.status(404).json({ success: false, error: "Shop not found"})
-    }
+  if (shop.rowCount == 0) {
+    return res.status(404).json({ success: false, error: "Shop not found" });
+  }
 
-    try {
-      const result = await query(
-        `SELECT DISTINCT brand_name, volume_ml
-         FROM stock_increments
-         WHERE shop_id = $1
-         ORDER BY brand_name, volume_ml`,
-        [shop_id]
-      );
-  
-      res.json({
-        success: true,
-        data: result.rows,
-      });
-    } catch (error) {
-      console.error("Error in getStockIncrementBrands:", error);
-      res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
-    }
-  };
-  
+  try {
+    const result = await query(
+      `SELECT si.brand_name, si.volume_ml, si.*
+FROM stock_increments si
+JOIN (
+  SELECT brand_name, volume_ml, MAX(id) AS max_id
+  FROM stock_increments
+  WHERE shop_id = $1
+  GROUP BY brand_name, volume_ml
+) latest ON 
+  si.brand_name = latest.brand_name AND 
+  si.volume_ml = latest.volume_ml AND 
+  si.id = latest.max_id
+WHERE si.shop_id = $1
+ORDER BY si.brand_name, si.volume_ml;
+`,
+      [shop_id]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error("Error in getStockIncrementBrands:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message,
+    });
+  }
+};

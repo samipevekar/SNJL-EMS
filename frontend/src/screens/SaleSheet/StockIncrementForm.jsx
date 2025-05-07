@@ -21,7 +21,7 @@ import { selectUser } from '../../redux/slice/authSlice';
 import { getWarehousesAsync, selectWarehouses } from '../../redux/slice/warehouseSlice';
 import { getShopByIdAsync, selectSpecificShop } from '../../redux/slice/shopSlice';
 
-const StockIncrementForm = () => {
+const StockIncrementForm = ({navigation}) => {
   const dispatch = useDispatch();
   const brandOptions = useSelector(selectBrands);
   const warehouseOptions = useSelector(selectWarehouses); // Your warehouse options
@@ -238,8 +238,10 @@ const StockIncrementForm = () => {
       style={styles.container}
       contentContainerStyle={styles.scrollContent}
     >
-      <Text style={styles.heading}>Add Stock</Text>
-
+      <View style={styles.header}>
+        <Text style={styles.heading}>Add Stock</Text>
+        <TouchableOpacity onPress={()=>navigation.navigate('AllStockPage')}><Text style={styles.allStocks}>All Stocks</Text></TouchableOpacity>
+      </View>
       {/* Warehouse Name */}
       <View style={styles.fieldContainer}>
         <Text style={styles.label}>Warehouse Name *</Text>
@@ -422,6 +424,20 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     color: colors.primary,
     textAlign: 'center',
+  },
+  header:{
+    display:'flex',
+    flexDirection:'row',
+    justifyContent:'space-between',
+    height:'auto'
+  },
+  allStocks:{
+    color:colors.white,
+    fontSize:14,
+    backgroundColor:colors.primary,
+    padding:4,
+    borderRadius:8,
+    fontWeight:'700'
   },
   fieldContainer: {
     marginBottom: 16,

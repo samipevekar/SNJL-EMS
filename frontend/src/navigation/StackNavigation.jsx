@@ -20,6 +20,8 @@ import PreviousRecordSalePage from '../screens/SaleSheet/PreviousRecordSalePage'
 import PreviousStockIncrementForm from '../screens/SaleSheet/PreviousStockIncrementForm';
 import BrandManagement from '../screens/Brands/BrandManagement';
 import BrandDetail from '../screens/Brands/BrandDetail';
+import AllStockPage from '../screens/SaleSheet/AllStockPage';
+import PreviousAllStockPage from '../screens/SaleSheet/PreviousAllStockPage';
 
 const Stack = createStackNavigator();
 
@@ -40,10 +42,12 @@ export default function StackNavigation() {
       <Stack.Screen name="AddExpensePage" component={ExpenseForm}  />
       <Stack.Screen name="AddWarehousePaymentPage" component={WarehousePaymentPage}  />
       <Stack.Screen name="StockIncrementForm" component={StockIncrementForm}  />
+      <Stack.Screen name="AllStockPage" component={AllStockPage}  />
       <Stack.Screen name="SaleSheetDetails" component={SaleSheetDetails}  />
       <Stack.Screen name="SaleSheetPage" component={SaleSheetsPage}  />
       <Stack.Screen name="PreviousRecordSalePage" component={PreviousRecordSalePage}  />
       <Stack.Screen name="PreviousStockIncrementForm" component={PreviousStockIncrementForm}  />
+      <Stack.Screen name="PreviousAllStockPage" component={PreviousAllStockPage}  />
       <Stack.Screen name="BrandManagement" component={BrandManagement}  />
       <Stack.Screen name="BrandDetail" component={BrandDetail}  />
     </Stack.Navigator>

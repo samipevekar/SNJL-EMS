@@ -32,21 +32,27 @@ const SaleSheetsPage = ({ navigation }) => {
     net_cash: 0,
     cash_in_hand: 0,
     upi: 0,
-    total_expenses: 0
+    total_expenses: 0,
+    canteen: 0,
+    net_sale: 0,
   });
   const [editingSheet, setEditingSheet] = useState(null);
   const shopId = user?.assigned_shops?.length > 0 ? user.assigned_shops[0] : null;
 
   const calculateTotals = useCallback((sheets) => {
+    let net_sale = 0
     let net_cash = 0;
     let cash_in_hand = 0;
     let upi = 0;
     let total_expenses = 0;
+    let canteen = 0;
   
     sheets.forEach(sheet => {
       net_cash += Number(sheet.net_cash || 0);
       cash_in_hand += Number(sheet.cash_in_hand || 0);
       upi += Number(sheet.upi || 0);
+      net_sale += Number(sheet.daily_sale || 0)
+      canteen += Number(sheet.canteen || 0)
   
       if (Array.isArray(sheet.expenses)) {
         sheet.expenses.forEach(expense => {
@@ -59,7 +65,9 @@ const SaleSheetsPage = ({ navigation }) => {
       net_cash,
       cash_in_hand,
       upi,
-      total_expenses
+      total_expenses,
+      canteen,
+      net_sale
     };
   }, []);
 
@@ -87,7 +95,9 @@ const SaleSheetsPage = ({ navigation }) => {
         net_cash: 0,
         cash_in_hand: 0,
         upi: 0,
-        total_expenses: 0
+        total_expenses: 0,
+        canteen: 0,
+        net_sale: 0
       });
     }
   }, [saleSheets, calculateTotals]);
@@ -120,20 +130,28 @@ const SaleSheetsPage = ({ navigation }) => {
         <View style={styles.summaryContainer}>
           <Text style={styles.summaryTitle}>Cumulative Totals</Text>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Net Cash:</Text>
-            <Text style={styles.summaryValue}>₹{totals.net_cash.toFixed(2)}</Text>
+            <Text style={styles.summaryLabel}>Net Sale:</Text>
+            <Text style={styles.summaryValue}>₹{totals.net_sale.toFixed(2)}</Text>
           </View>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Cash Collected:</Text>
-            <Text style={styles.summaryValue}>₹{totals.cash_in_hand.toFixed(2)}</Text>
+            <Text style={styles.summaryLabel}>Expenses:</Text>
+            <Text style={styles.summaryValue}>₹{totals.total_expenses.toFixed(2)}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Canteen:</Text>
+            <Text style={styles.summaryValue}>₹{totals.canteen.toFixed(2)}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Net Cash:</Text>
+            <Text style={styles.summaryValue}>₹{totals.net_cash.toFixed(2)}</Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>UPI:</Text>
             <Text style={styles.summaryValue}>₹{totals.upi.toFixed(2)}</Text>
           </View>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Expenses:</Text>
-            <Text style={styles.summaryValue}>₹{totals.total_expenses.toFixed(2)}</Text>
+            <Text style={styles.summaryLabel}>Cash Collected:</Text>
+            <Text style={styles.summaryValue}>₹{totals.cash_in_hand.toFixed(2)}</Text>
           </View>
         </View>
       )}

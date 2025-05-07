@@ -49,7 +49,7 @@ export default function TabNavigation() {
     >
       <Tab.Screen name="Home" component={Home} />
       {user && (user?.role === 'manager' || user?.role === 'super_user') && <Tab.Screen name="Shops" component={Shop} />}
-      {user && (user?.role === 'super_user') && <Tab.Screen name="Accouting" component={AccoutingPage} />}
+      {user && (user?.role === 'super_user' || user?.role === 'manager') && <Tab.Screen name="Accouting" component={AccoutingPage} />}
       {user && user?.role === 'user' && <Tab.Screen name="Record Sale" component={RecordSalePage} />}
     </Tab.Navigator>
   );

@@ -62,7 +62,8 @@ const ShopDetails = ({route, navigation}) => {
       let label = '';
 
       if (shop.liquor_type === 'country') {
-        total = parseFloat(shop.mgq);
+        yearly = parseFloat(shop.mgq)/9;
+        total = parseFloat(yearly)/12
         remaining = parseFloat(shop.monthly_mgq);
         label = 'Monthly MGQ';
       } else if (shop.liquor_type === 'foreign') {

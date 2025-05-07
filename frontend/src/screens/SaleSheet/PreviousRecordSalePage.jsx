@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -17,6 +17,7 @@ import {
 import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { Picker } from '@react-native-picker/picker';
 
 import StockIncrementCard from '../../components/StockIncrementCard';
 import { selectUser } from '../../redux/slice/authSlice';
@@ -37,19 +38,20 @@ import {
 import colors from '../../theme/colors';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { TextInput } from 'react-native-gesture-handler';
+import { getAllShopsAsync, selectShops } from '../../redux/slice/shopSlice';
 
 const PreviousRecordSalePage = ({ navigation }) => {
   const dispatch = useDispatch();
   const user = useSelector(selectUser);
+  const shops = useSelector(selectShops);
   const brands = useSelector(selectStockIncrementBrands);
   const status = useSelector(selectStockIncrementBrandsStatus);
   const createStatus = useSelector(selectSaleSheetStatus);
-  const createError = useSelector(selectSaleSheetError);
-  const fetchStockIncrementBrandsError = useSelector(selectStockIncrementBrandsError)
   
   const [saleData, setSaleData] = useState({});
   const [expenses, setExpenses] = useState([]);
   const [upiAmount, setUpiAmount] = useState('');
+  const [canteenAmount, setCanteenAmount] = useState('');
   const [expenseModalVisible, setExpenseModalVisible] = useState(false);
   const [expenseMessage, setExpenseMessage] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
@@ -57,9 +59,14 @@ const PreviousRecordSalePage = ({ navigation }) => {
   const [saleDate, setSaleDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
+  // Filter shops based on user role
+  const filteredShops = user?.role === 'manager' 
+    ? shops.filter(shop => user.assigned_shops?.includes(shop.shop_id))
+    : shops;
+
   const handleFetchBrands = () => {
     if (!shopId) {
-      Alert.alert('Error', 'Please enter Shop ID');
+      Alert.alert('Error', 'Please select a shop');
       return;
     }
     
@@ -129,6 +136,7 @@ const PreviousRecordSalePage = ({ navigation }) => {
             sale: item.sale,
             upi: isLast && upiAmount ? parseInt(upiAmount) : 0,
             expenses: isLast && expenses.length > 0 ? expenses : [],
+            canteen: isLast && canteenAmount ? parseInt(canteenAmount) : 0,
             sale_date: formattedDate
           })).unwrap();
         })
@@ -138,6 +146,7 @@ const PreviousRecordSalePage = ({ navigation }) => {
         Alert.alert('Success', 'All sales recorded successfully');
         setSaleData({});
         setUpiAmount('');
+        setCanteenAmount('')
         setExpenses([]);
       } else {
         Alert.alert('Error', 'Failed to record some sales');
@@ -153,6 +162,10 @@ const PreviousRecordSalePage = ({ navigation }) => {
     setSaleDate(currentDate);
   };
 
+  useEffect(() => {
+    dispatch(getAllShopsAsync());
+  }, []);
+  
   if (createStatus === 'loading' || status === 'loading') {
     return (
       <View style={styles.loadingContainer}>
@@ -161,13 +174,6 @@ const PreviousRecordSalePage = ({ navigation }) => {
     );
   }
 
-//   if (status === 'failed') {
-//     return (
-//       <View style={styles.container}>
-//         <Text style={styles.errorText}>Failed to load brands</Text>
-//       </View>
-//     );
-//   }
 
   return (
     <KeyboardAvoidingView 
@@ -181,14 +187,24 @@ const PreviousRecordSalePage = ({ navigation }) => {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Shop ID</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter Shop ID"
-              keyboardType="numeric"
-              value={shopId}
-              onChangeText={setShopId}
-            />
+            <Text style={styles.label}>Select Shop</Text>
+            <View style={styles.pickerContainer}>
+              <Picker
+                selectedValue={shopId}
+                onValueChange={(itemValue) => setShopId(itemValue)}
+                style={styles.picker}
+                dropdownIconColor={colors.primary}
+              >
+                <Picker.Item label="Select a shop" value="" />
+                {filteredShops.map(shop => (
+                  <Picker.Item 
+                    key={shop.shop_id} 
+                    label={`${shop.shop_name} (${shop.shop_id})`} 
+                    value={shop.shop_id} 
+                  />
+                ))}
+              </Picker>
+            </View>
             
             <TouchableOpacity 
               style={styles.fetchButton} 
@@ -247,6 +263,20 @@ const PreviousRecordSalePage = ({ navigation }) => {
                   onChangeText={(text) => {
                     if (/^\d*$/.test(text)) {
                       setUpiAmount(text);
+                    }
+                  }}
+                />
+              </View>
+
+              <View style={styles.upiContainer}>
+                <TextInput
+                  style={styles.upiInput}
+                  placeholder="Enter canteen amount"
+                  keyboardType="numeric"
+                  value={canteenAmount}
+                  onChangeText={(text) => {
+                    if (/^\d*$/.test(text)) {
+                      setCanteenAmount(text);
                     }
                   }}
                 />
@@ -390,15 +420,17 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     color: colors.textDark,
   },
-  input: {
-    height: 40,
+  pickerContainer: {
     borderColor: colors.secondary,
     borderWidth: 1,
     borderRadius: 6,
-    paddingHorizontal: 12,
     backgroundColor: colors.white,
-    fontSize: 14,
     marginBottom: 10,
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 53,
+    width: '100%',
   },
   dateInput: {
     height: 40,

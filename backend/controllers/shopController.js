@@ -9,8 +9,7 @@ export const createShop = async (req, res) => {
     mgq_q1,
     mgq_q2,
     mgq_q3,
-    mgq_q4,
-    canteen
+    mgq_q4
   } = req.body;
 
   try {
@@ -21,7 +20,7 @@ export const createShop = async (req, res) => {
     );
 
     if (checkUniqueShopId.rowCount > 0) {
-      return res.status(400).json({ message: "shop_id already exists." });
+      return res.status(400).json({ error: "shop_id already exists." });
     }
 
     // Ensure all mgq values are numbers (default to 0 if undefined)
@@ -32,11 +31,11 @@ export const createShop = async (req, res) => {
 
     // Validation
     if (liquor_type === "foreign" && (!mgq_q1 || !mgq_q2 || !mgq_q3 || !mgq_q4)) {
-      return res.status(400).json({ message: "Enter all mgq values for foreign liquor" });
+      return res.status(400).json({ error: "Enter all mgq values for foreign liquor" });
     }
 
     if (liquor_type === "country" && !mgq) {
-      return res.status(400).json({ message: "Enter mgq for country liquor" });
+      return res.status(400).json({ error: "Enter mgq for country liquor" });
     }
 
     // Calculate mgq based on liquor type
@@ -47,10 +46,10 @@ export const createShop = async (req, res) => {
     // Insert shop data
     const shop = await query(
       `
-      INSERT INTO shops (shop_id, shop_name, mgq, yearly_mgq, monthly_mgq, liquor_type,mgq_q1,mgq_q2,mgq_q3,mgq_q4,canteen)
-      VALUES ($1, $2, $3, $4, $5, $6,$7,$8,$9,$10,$11) RETURNING *;
+      INSERT INTO shops (shop_id, shop_name, mgq, yearly_mgq, monthly_mgq, liquor_type,mgq_q1,mgq_q2,mgq_q3,mgq_q4)
+      VALUES ($1, $2, $3, $4, $5, $6,$7,$8,$9,$10) RETURNING *;
       `,
-      [shop_id, shop_name, final_mgq, yearly_mgq, monthly_mgq, liquor_type,mgq_q1,mgq_q2,mgq_q3,mgq_q4,canteen]
+      [shop_id, shop_name, final_mgq, yearly_mgq, monthly_mgq, liquor_type,mgq_q1,mgq_q2,mgq_q3,mgq_q4]
     );
 
     res.status(200).json(shop.rows[0]);
@@ -70,8 +69,7 @@ export const editShop = async (req, res) => {
     mgq_q1,
     mgq_q2,
     mgq_q3,
-    mgq_q4,
-    canteen
+    mgq_q4
   } = req.body;
 
   const {id} = req.params
@@ -117,9 +115,8 @@ export const editShop = async (req, res) => {
         mgq_q2 = COALESCE($7, mgq_q2),
         mgq_q3 = COALESCE($8, mgq_q3),
         mgq_q4 = COALESCE($9, mgq_q4),
-        canteen = COALESCE($10, canteen),
-        shop_id = COALESCE($11, shop_id)
-      WHERE id = $12
+        shop_id = COALESCE($10, shop_id)
+      WHERE id = $11
       RETURNING *;
       `,
       [
@@ -132,7 +129,6 @@ export const editShop = async (req, res) => {
         mgq_q2,
         mgq_q3,
         mgq_q4,
-        canteen,
         shop_id,
         id
       ]

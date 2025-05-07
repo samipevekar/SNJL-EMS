@@ -71,7 +71,8 @@ const Home = () => {
       let label = '';
 
       if (shop.liquor_type === 'country') {
-        total = parseFloat(shop.mgq);
+        total = Math.round((parseFloat(shop.mgq)/9)/12);
+        // total = parseFloat(yearly)/12
         remaining = parseFloat(shop.monthly_mgq);
         label = 'Monthly MGQ';
       } else if (shop.liquor_type === 'foreign') {

@@ -15,21 +15,22 @@ import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { useDispatch, useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { Picker } from '@react-native-picker/picker';
 import colors from '../../theme/colors';
 import { addStockIncrement, resetAddStockStatus, selectAddStockError, selectAddStockStatus } from '../../redux/slice/stockIncrementSlice';
 import { clearBrands, getBrandsAsync, selectBrands, selectBrandsStatus } from '../../redux/slice/brandSlice';
 import { selectUser } from '../../redux/slice/authSlice';
 import { getWarehousesAsync, selectWarehouses, selectWarehouseStatus } from '../../redux/slice/warehouseSlice';
-import { getShopByIdAsync, selectSpecificShop } from '../../redux/slice/shopSlice';
+import { getAllShopsAsync, selectShops } from '../../redux/slice/shopSlice';
 
-const PreviousStockIncrementForm = () => {
+const PreviousStockIncrementForm = ({navigation}) => {
   const dispatch = useDispatch();
   const brandOptions = useSelector(selectBrands);
   const warehouseOptions = useSelector(selectWarehouses);
+  const shops = useSelector(selectShops);
   const status = useSelector(selectAddStockStatus);
   const error = useSelector(selectAddStockError);
   const user = useSelector(selectUser);
-  const shop = useSelector(selectSpecificShop);
   const brandStatus = useSelector(selectBrandsStatus);
   const warehouseStatus = useSelector(selectWarehouseStatus);
 
@@ -41,6 +42,11 @@ const PreviousStockIncrementForm = () => {
   const [shopId, setShopId] = useState('');
   const [stockDate, setStockDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // Filter shops based on user role
+  const filteredShops = user?.role === 'manager' 
+    ? shops.filter(shop => user.assigned_shops?.includes(shop.shop_id))
+    : shops;
 
   const { 
     control, 
@@ -66,7 +72,7 @@ const PreviousStockIncrementForm = () => {
 
   const onSubmit = (data) => {
     if (!shopId) {
-      Alert.alert('Error', 'Please enter Shop ID');
+      Alert.alert('Error', 'Please select a shop');
       return;
     }
 
@@ -84,7 +90,7 @@ const PreviousStockIncrementForm = () => {
         volume_ml: Number(brand.volume_ml),
         warehouse_name: data.warehouse_name,
         cases: Number(brand.cases),
-        stock_date: formattedDate // Include the stock_date in the request
+        stock_date: formattedDate
       };
       
       return dispatch(addStockIncrement(stockData)).unwrap();
@@ -96,7 +102,8 @@ const PreviousStockIncrementForm = () => {
         reset();
       })
       .catch(error => {
-        Alert.alert('Error', error?.message || 'Failed to add some stock increments');
+        Alert.alert('Error', error || 'Failed to add some stock increments');
+        console.log(error)
       })
       .finally(() => {
         setLoading(false);
@@ -104,6 +111,12 @@ const PreviousStockIncrementForm = () => {
       });
   };
 
+  useEffect(() => {  
+    dispatch(getBrandsAsync({type:''}));
+    dispatch(getWarehousesAsync());
+    dispatch(getAllShopsAsync());
+  }, []);
+  
   useEffect(() => {
     if (status === 'failed' && error) {
       Alert.alert('Error', typeof error === 'string' ? error : 'Failed to add stock increment');
@@ -111,11 +124,6 @@ const PreviousStockIncrementForm = () => {
     }
   }, [status, error]);
 
-  useEffect(() => {  
-    dispatch(getBrandsAsync({type:''}))
-    dispatch(getWarehousesAsync())
-  }, [])
-  
 
   const filteredBrands = brandOptions.filter(brand =>
     brand.brand_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -244,24 +252,33 @@ const PreviousStockIncrementForm = () => {
       style={styles.container}
       contentContainerStyle={styles.scrollContent}
     >
-      <Text style={styles.heading}>Add Previous Stock</Text>
+      <View style={styles.header}>
+        <Text style={styles.heading}>Add Previous Stock</Text>
 
-      {/* Shop ID */}
+        <TouchableOpacity style={styles.allStocksBtn} onPress={()=>navigation.navigate('PreviousAllStockPage')}><Text style={styles.allStocks}>All Stocks</Text></TouchableOpacity>
+
+      </View>
+
+      {/* Shop Selection */}
       <View style={styles.fieldContainer}>
-        <Text style={styles.label}>Shop ID *</Text>
-        <TextInput
-          style={[styles.input]}
-          keyboardType="numeric"
-          onChangeText={setShopId}
-          value={shopId}
-          placeholder="Enter shop ID"
-        />
-        {/* <TouchableOpacity
-          style={styles.fetchButton}
-          onPress={handleFetchShopAndBrands}
-        >
-          <Text style={styles.fetchButtonText}>Fetch Shop Details</Text>
-        </TouchableOpacity> */}
+        <Text style={styles.label}>Select Shop *</Text>
+        <View style={styles.pickerContainer}>
+          <Picker
+            selectedValue={shopId}
+            onValueChange={(itemValue) => setShopId(itemValue)}
+            style={styles.picker}
+            dropdownIconColor={colors.primary}
+          >
+            <Picker.Item label="Select a shop" value="" />
+            {filteredShops.map(shop => (
+              <Picker.Item 
+                key={shop.shop_id} 
+                label={`${shop.shop_name} (${shop.shop_id})`} 
+                value={shop.shop_id} 
+              />
+            ))}
+          </Picker>
+        </View>
       </View>
 
       {/* Stock Date */}
@@ -468,8 +485,36 @@ const styles = StyleSheet.create({
     color: colors.primary,
     textAlign: 'center',
   },
+  header:{
+    flexDirection: 'row',
+    justifyContent:'space-between',
+    alignItems:'center'
+  },
+  allStocksBtn:{
+    marginBottom:15
+  },
+  allStocks:{
+    color:colors.white,
+    fontSize:14,
+    backgroundColor:colors.primary,
+    padding:4,
+    borderRadius:8,
+    fontWeight:'700'
+  },
   fieldContainer: {
     marginBottom: 16,
+  },
+  pickerContainer: {
+    borderColor: colors.secondary,
+    borderWidth: 1,
+    borderRadius: 6,
+    backgroundColor: colors.white,
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 53,
+    width: '100%',
   },
   brandItemContainer: {
     backgroundColor: colors.white,
@@ -620,19 +665,6 @@ const styles = StyleSheet.create({
   warehouseText: {
     fontSize: 16,
     color: colors.textPrimary,
-  },
-  fetchButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-  },
-  fetchButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: '600',
   },
 });
 

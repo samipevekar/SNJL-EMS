@@ -48,6 +48,7 @@ const RecordSalePage = ({ navigation }) => {
   const [saleData, setSaleData] = useState({});
   const [expenses, setExpenses] = useState([]);
   const [upiAmount, setUpiAmount] = useState('');
+  const [canteenAmount, setCanteenAmount] = useState('');
   const [expenseModalVisible, setExpenseModalVisible] = useState(false);
   const [expenseMessage, setExpenseMessage] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
@@ -111,7 +112,8 @@ const RecordSalePage = ({ navigation }) => {
             volume_ml: item.volume_ml,
             sale: item.sale,
             upi: isLast && upiAmount ? parseInt(upiAmount) : 0,
-            expenses: isLast && expenses.length > 0 ? expenses : []
+            expenses: isLast && expenses.length > 0 ? expenses : [],
+            canteen: isLast && canteenAmount ? parseInt(canteenAmount) : 0
           })).unwrap();
         })
       );
@@ -120,12 +122,14 @@ const RecordSalePage = ({ navigation }) => {
         Alert.alert('Success', 'All sales recorded successfully');
         setSaleData({});
         setUpiAmount('');
+        setCanteenAmount('')
         setExpenses([]);
       } else {
         Alert.alert('Error', 'Failed to record some sales');
       }
     } catch (error) {
-      Alert.alert('Error', error.message || 'Failed to record sales');
+      Alert.alert('Error', error.error || 'Failed to record sales');
+      console.log(error)
     }
   };
 
@@ -199,6 +203,21 @@ const RecordSalePage = ({ navigation }) => {
                   onChangeText={(text) => {
                     if (/^\d*$/.test(text)) {
                       setUpiAmount(text);
+                    }
+                  }}
+                />
+              </View>
+
+              <View style={styles.upiContainer}>
+                {/* <Text style={styles.label}>Canteen</Text> */}
+                <TextInput
+                  style={styles.upiInput}
+                  placeholder="Enter canteen amount"
+                  keyboardType="numeric"
+                  value={canteenAmount}
+                  onChangeText={(text) => {
+                    if (/^\d*$/.test(text)) {
+                      setCanteenAmount(text);
                     }
                   }}
                 />

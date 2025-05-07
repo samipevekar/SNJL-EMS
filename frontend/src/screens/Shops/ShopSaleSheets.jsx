@@ -1,18 +1,20 @@
 import { StyleSheet, Text, View, ScrollView } from 'react-native'
 import React, { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { fetchSaleSheetsAsync, selectSaleSheets } from '../../redux/slice/saleSheetSlice'
+import { fetchSaleSheetsAsync, selectSaleSheets, selectSaleSheetsLoading } from '../../redux/slice/saleSheetSlice'
 import SaleSheetCard from '../../components/SaleSheetCard'
 import colors from '../../theme/colors'
 import { formatDateLeft } from '../../utils/formatDateLeft'
 import { getAllExpenseAsync, selectShopExpenses } from '../../redux/slice/shopSlice'
 import ExpensesTable from '../../components/ExpensesTable'
+import { ActivityIndicator } from 'react-native-paper'
 
 const ShopSaleSheets = ({route}) => {
     const { shop_id, sale_date } = route.params
     const dispatch = useDispatch()
     const saleSheets = useSelector(selectSaleSheets)
     const shopExpenses = useSelector(selectShopExpenses)
+    const loading = useSelector(selectSaleSheetsLoading)
 
     useEffect(() => {
         dispatch(fetchSaleSheetsAsync({shop_id, sale_date}))
@@ -24,11 +26,15 @@ const ShopSaleSheets = ({route}) => {
         let cash_in_hand = 0;
         let upi = 0;
         let total_expenses = 0;
+        let canteen = 0;
+        let net_sale = 0;
       
         saleSheets.forEach(sheet => {
           net_cash += Number(sheet.net_cash || 0);
           cash_in_hand += Number(sheet.cash_in_hand || 0);
           upi += Number(sheet.upi || 0);
+          canteen += Number(sheet.canteen || 0)
+          net_sale += Number(sheet.daily_sale || 0)
       
           // Sum of all expenses per sheet
           if (Array.isArray(sheet.expenses)) {
@@ -42,11 +48,19 @@ const ShopSaleSheets = ({route}) => {
           net_cash,
           cash_in_hand,
           upi,
-          total_expenses
+          total_expenses,
+          canteen,
+          net_sale
         };
       };
       
-      const { net_cash, cash_in_hand, upi, total_expenses } = getCumulativeTotals();
+      const { net_cash, cash_in_hand, upi, total_expenses, canteen, net_sale } = getCumulativeTotals();
+
+      if(loading){
+        return (
+            <ActivityIndicator size={'large'} color={colors.primary} style={styles.ActivityIndicator} />
+        )
+      }
     
 
     return (
@@ -73,20 +87,28 @@ const ShopSaleSheets = ({route}) => {
               <View style={styles.summaryContainer}>
                 <Text style={styles.summaryTitle}>Cumulative Totals</Text>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Net Cash:</Text>
-                  <Text style={styles.summaryValue}>₹{net_cash.toFixed(2)}</Text>
+                  <Text style={styles.summaryLabel}>Net Sale:</Text>
+                  <Text style={styles.summaryValue}>₹{net_sale.toFixed(2)}</Text>
                 </View>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Cash Collected:</Text>
-                  <Text style={styles.summaryValue}>₹{cash_in_hand.toFixed(2)}</Text>
+                  <Text style={styles.summaryLabel}>Expenses:</Text>
+                  <Text style={styles.summaryValue}>₹{total_expenses.toFixed(2)}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Canteen:</Text>
+                  <Text style={styles.summaryValue}>₹{canteen.toFixed(2)}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Net Cash:</Text>
+                  <Text style={styles.summaryValue}>₹{net_cash.toFixed(2)}</Text>
                 </View>
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>UPI:</Text>
                   <Text style={styles.summaryValue}>₹{upi.toFixed(2)}</Text>
                 </View>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Expenses:</Text>
-                  <Text style={styles.summaryValue}>₹{total_expenses.toFixed(2)}</Text>
+                  <Text style={styles.summaryLabel}>Cash Collected:</Text>
+                  <Text style={styles.summaryValue}>₹{cash_in_hand.toFixed(2)}</Text>
                 </View>
               </View>
             )}
@@ -227,6 +249,9 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: colors.textDark,
       },
+      ActivityIndicator:{
+        margin:'auto'
+      }
 })
 
 export default ShopSaleSheets

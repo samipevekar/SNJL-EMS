@@ -8,6 +8,7 @@ import {useDispatch, useSelector} from 'react-redux';
 import {getAllShopsAsync, selectShops} from '../../redux/slice/shopSlice';
 import {ScrollView} from 'react-native-gesture-handler';
 import { getWarehousesAsync, selectWarehouses } from '../../redux/slice/warehouseSlice';
+import { selectUser } from '../../redux/slice/authSlice';
 
 const AccountingPage = () => {
   const [expandedTab, setExpandedTab] = useState(null);
@@ -17,6 +18,7 @@ const AccountingPage = () => {
   const [showToDate, setShowToDate] = useState(false);
   const navigation = useNavigation();
 
+
   const dispatch = useDispatch();
   useEffect(() => {
     dispatch(getAllShopsAsync());
@@ -24,10 +26,15 @@ const AccountingPage = () => {
   }, []);
 
   const shops = useSelector(selectShops);
+  const user = useSelector(selectUser)
   const warehouses = useSelector(selectWarehouses);
 
+  const filteredShops = user?.role === 'manager' ? shops.filter((shop)=>(
+    user?.assigned_shops.includes(shop?.shop_id)
+  )) : shops
+
   const data = [
-    {title: 'Shop', type: 'shop', items: shops, nameField: 'shop_name'},
+    {title: 'Shop', type: 'shop', items: filteredShops, nameField: 'shop_name'},
     {
       title: 'Warehouse',
       type: 'warehouse',

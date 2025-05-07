@@ -9,7 +9,9 @@ export const createSaleSheet = async (req, res) => {
     sale,
     expenses,
     upi,
-    sale_date // Add sale_date from request body
+    canteen,
+    sale_date // Add sale_date from request body,
+
   } = req.body;
 
   try {
@@ -106,8 +108,8 @@ export const createSaleSheet = async (req, res) => {
         ? expenses.reduce((sum, exp) => sum + exp.amount, 0)
         : 0;
 
-    const canteen = shop.rows[0].canteen
-    const net_cash = daily_sale - total_expenses + canteen;
+    // const canteen = shop.rows[0].canteen
+    const net_cash = daily_sale - total_expenses + (canteen || 0);
     const cash_in_hand = (net_cash - upi) || 0;
 
     // Use the sale_date for both sale_date and created_at fields if provided
@@ -204,6 +206,7 @@ export const updateSaleSheet = async (req, res) => {
     liquor_type,
     volume_ml,
     upi,
+    canteen,
     opening_balance: rawOpeningBalance,
   } = req.body;
 
@@ -272,7 +275,7 @@ export const updateSaleSheet = async (req, res) => {
     }
 
     const daily_sale = validSale * mrp_per_unit;
-    const net_cash = daily_sale - total_expenses + existingSheet.canteen; 
+    const net_cash = daily_sale - total_expenses + (canteen || 0); 
     const cash_in_hand = net_cash - parseNumber(upi ?? existingSheet.upi, 0);
     const closing_balance = opening_balance - validSale;
 
