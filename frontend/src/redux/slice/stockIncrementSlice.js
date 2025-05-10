@@ -8,7 +8,9 @@ const initialState = {
   addStockStatus: 'idle',
   addStockError: null,
   updateStockStatus: 'idle',
-  updateStockError: null
+  updateStockError: null,
+  deleteStockStatus: 'idle',
+  deleteStockError: null,
 }
 
 export const fetchStockIncrementBrands = createAsyncThunk(
@@ -49,6 +51,19 @@ export const updateStockIncrement = createAsyncThunk(
   }
 );
 
+export const deleteStockIncrement = createAsyncThunk(
+  'stockIncrement/delete',
+  async (id, { rejectWithValue }) => {
+    try {
+      const response = await axiosInstance.delete(`/stock-increment/${id}`);
+      return response.data;
+    } catch (error) {
+      console.log(error)
+      return rejectWithValue(error.response?.data?.error || "Failed to delete stock increment");
+    }
+  }
+);
+
 const stockIncrementSlice = createSlice({
   name: "stockIncrement",
   initialState,
@@ -65,7 +80,12 @@ const stockIncrementSlice = createSlice({
     resetUpdateStockStatus: (state) => {
       state.updateStockStatus = 'idle';
       state.updateStockError = null;
+    },
+    resetDeleteStockStatus: (state) => {
+      state.deleteStockStatus = 'idle';
+      state.deleteStockError = null;
     }
+
   },
   extraReducers: (builder) => {
     builder
@@ -104,11 +124,23 @@ const stockIncrementSlice = createSlice({
       .addCase(updateStockIncrement.rejected, (state, action) => {
         state.updateStockStatus = 'failed';
         state.updateStockError = action.payload;
+      })
+
+      // Update stock increment reducers
+      .addCase(deleteStockIncrement.pending, (state) => {
+        state.deleteStockStatus = 'loading';
+      })
+      .addCase(deleteStockIncrement.fulfilled, (state) => {
+        state.deleteStockStatus = 'succeeded';
+      })
+      .addCase(deleteStockIncrement.rejected, (state, action) => {
+        state.deleteStockStatus = 'failed';
+        state.deleteStockError = action.payload;
       });
   }
 });
 
-export const { clearBrands, resetAddStockStatus, resetUpdateStockStatus } = stockIncrementSlice.actions;
+export const { clearBrands, resetAddStockStatus, resetUpdateStockStatus, resetDeleteStockStatus } = stockIncrementSlice.actions;
 
 // Selectors
 export const selectStockIncrementBrands = (state) => state.stockIncrement.brands;
@@ -118,5 +150,7 @@ export const selectAddStockStatus = (state) => state.stockIncrement.addStockStat
 export const selectAddStockError = (state) => state.stockIncrement.addStockError;
 export const selectUpdateStockStatus = (state) => state.stockIncrement.updateStockStatus;
 export const selectUpdateStockError = (state) => state.stockIncrement.updateStockError;
+export const selectDeleteStockStatus = (state) => state.stockIncrement.deleteStockStatus;
+export const selectDeleteStockError = (state) => state.stockIncrement.deleteStockError;
 
 export default stockIncrementSlice.reducer;

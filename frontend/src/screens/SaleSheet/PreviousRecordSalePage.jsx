@@ -88,13 +88,13 @@ const PreviousRecordSalePage = ({ navigation }) => {
   const handleCardChange = (data) => {
     setSaleData(prev => ({
       ...prev,
-      [`${data.brand_name}-${data.volume_ml}`]: data
+      [`${data.brand_name}-${data.volume_ml}`]: data,
+      id:data.id
     }));
   };
 
   const handleAddExpense = () => {
     if (!expenseMessage || !expenseAmount) return;
-
     setExpenses([...expenses, {
       message: expenseMessage,
       amount: parseInt(expenseAmount)
@@ -131,6 +131,7 @@ const PreviousRecordSalePage = ({ navigation }) => {
           const isLast = index === salesToSubmit.length - 1;
           return dispatch(createSaleSheetAsync({
             shop_id: shopId,
+            stock_increment_id: item.id,
             brand_name: item.brand_name,
             volume_ml: item.volume_ml,
             sale: item.sale,
@@ -246,6 +247,7 @@ const PreviousRecordSalePage = ({ navigation }) => {
                     brand_name={item.brand_name}
                     volume_ml={item.volume_ml}
                     onChange={handleCardChange}
+                    id={item.id}
                   />
                 )}
                 contentContainerStyle={styles.listContent}

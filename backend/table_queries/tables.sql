@@ -33,7 +33,8 @@ CREATE TABLE sale_sheets (
     cash_in_hand INTEGER GENERATED ALWAYS AS (net_cash - upi) STORED, -- Auto-calculated
     canteen INTEGER NOT NULL DEFAULT 100, -- Constant value
     sale_date DATE NOT NULL DEFAULT CURRENT_DATE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    stock_increment_id int references stock_increments(id)
 );
 
 -- brands table

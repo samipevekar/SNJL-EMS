@@ -455,6 +455,231 @@ export const updateStockIncrement = async (req, res) => {
   }
 };
 
+
+// delete stock increment
+export const deleteStockIncrement = async (req, res) => {
+  const { id:stock_increment_id } = req.params;
+
+  if (!stock_increment_id) {
+    return res.status(400).json({ error: "Stock increment ID is required" });
+  }
+
+
+  try {
+    await query('BEGIN');
+
+    // Get the stock increment details
+    const stockIncrementResult = await query(
+      `SELECT 
+        id, 
+        shop_id, 
+        bill_id, 
+        brand_name, 
+        volume_ml, 
+        warehouse_name, 
+        cases, 
+        pieces,
+        created_at
+       FROM stock_increments 
+       WHERE id = $1`,
+      [stock_increment_id]
+    );
+
+    if (stockIncrementResult.rowCount === 0) {
+      await query('ROLLBACK');
+      return res.status(404).json({ error: "Stock increment not found" });
+    }
+
+    const stockIncrement = stockIncrementResult.rows[0];
+    const {
+      shop_id,
+      brand_name,
+      volume_ml,
+      warehouse_name,
+      cases,
+      pieces,
+      created_at
+    } = stockIncrement;
+
+    // Get shop details
+    const shopResult = await query(
+      `SELECT liquor_type FROM shops WHERE shop_id = $1`,
+      [shop_id]
+    );
+
+    if (shopResult.rowCount === 0) {
+      await query('ROLLBACK');
+      return res.status(404).json({ error: "Shop not found" });
+    }
+
+    const liquor_type = shopResult.rows[0].liquor_type;
+
+    // Get brand details for cost price and duty
+    const brandData = await query(
+      `SELECT cost_price_per_case, duty FROM brands 
+       WHERE brand_name = $1 AND liquor_type = $2 AND volume_ml = $3`,
+      [brand_name, liquor_type, volume_ml]
+    );
+
+    if (brandData.rowCount === 0) {
+      await query('ROLLBACK');
+      return res.status(404).json({
+        success: false,
+        error: "Brand not found with given volume or liquor type",
+      });
+    }
+
+    const { cost_price_per_case, duty } = brandData.rows[0];
+    const creditValue = cases * cost_price_per_case;
+
+    // Revert MGQ updates
+    const stockDate = new Date(created_at);
+    const month = stockDate.getMonth() + 1;
+
+    if (liquor_type === "country") {
+      await query(
+        `UPDATE shops 
+         SET monthly_mgq = monthly_mgq + $1, yearly_mgq = yearly_mgq + $1 
+         WHERE shop_id = $2`,
+        [cases, shop_id]
+      );
+    } else {
+      let quarterField = "mgq_q1";
+      if (month <= 3) quarterField = "mgq_q1";
+      else if (month <= 6) quarterField = "mgq_q2";
+      else if (month <= 9) quarterField = "mgq_q3";
+      else quarterField = "mgq_q4";
+
+      const totalValue = cases * duty;
+
+      await query(
+        `UPDATE shops 
+         SET ${quarterField} = ${quarterField} + $1 
+         WHERE shop_id = $2`,
+        [totalValue, shop_id]
+      );
+    }
+
+    // Delete sale sheets that reference this stock increment
+    await query(
+      `DELETE FROM sale_sheets WHERE stock_increment_id = $1`,
+      [stock_increment_id]
+    );
+
+    // Update the latest sale sheet's closing balance (decrement by pieces)
+    const latestSaleSheet = await query(
+      `SELECT id, closing_balance FROM sale_sheets 
+       WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3 
+       ORDER BY sale_date DESC, id DESC LIMIT 1`,
+      [shop_id, brand_name, volume_ml]
+    );
+
+    if (latestSaleSheet.rowCount > 0) {
+      const latestId = latestSaleSheet.rows[0].id;
+      const currentClosingBalance = latestSaleSheet.rows[0].closing_balance;
+
+      await query(
+        `UPDATE sale_sheets 
+         SET closing_balance = $1 
+         WHERE id = $2`,
+        [currentClosingBalance - pieces, latestId]
+      );
+    }
+
+    // Delete warehouse balance entries
+    await query(
+      `DELETE FROM warehouse_balance_sheets 
+       WHERE stock_increment_id = $1`,
+      [stock_increment_id]
+    );
+
+    // Recalculate warehouse balances for the specific warehouse
+    const warehouseBalances = await query(
+      `SELECT * FROM warehouse_balance_sheets 
+       WHERE type = $1 AND date >= $2
+       ORDER BY date, id`,
+      [warehouse_name, created_at]
+    );
+
+    let runningBalance = 0;
+    
+    // Find the previous balance before our deleted entry
+    const prevBalanceResult = await query(
+      `SELECT balance FROM warehouse_balance_sheets 
+       WHERE type = $1 AND date < $2 
+       ORDER BY date DESC, id DESC LIMIT 1`,
+      [warehouse_name, created_at]
+    );
+    
+    if (prevBalanceResult.rowCount > 0) {
+      runningBalance = Number(prevBalanceResult.rows[0].balance);
+    }
+
+    // Recalculate all subsequent balances for this warehouse
+    for (const entry of warehouseBalances.rows) {
+      runningBalance = runningBalance + Number(entry.credit) - Number(entry.debit);
+      
+      await query(
+        `UPDATE warehouse_balance_sheets 
+         SET balance = $1 
+         WHERE id = $2`,
+        [runningBalance, entry.id]
+      );
+    }
+
+    // Recalculate warehouse balances for 'all' warehouse type
+    const allWarehouseBalances = await query(
+      `SELECT * FROM warehouse_balance_sheets 
+       WHERE type = 'all' AND date >= $1
+       ORDER BY date, id`,
+      [created_at]
+    );
+
+    let runningBalanceAll = 0;
+    
+    // Find the previous balance before our deleted entry for 'all'
+    const prevBalanceAllResult = await query(
+      `SELECT balance FROM warehouse_balance_sheets 
+       WHERE type = 'all' AND date < $1 
+       ORDER BY date DESC, id DESC LIMIT 1`,
+      [created_at]
+    );
+    
+    if (prevBalanceAllResult.rowCount > 0) {
+      runningBalanceAll = Number(prevBalanceAllResult.rows[0].balance);
+    }
+
+    // Recalculate all subsequent balances for 'all' warehouse type
+    for (const entry of allWarehouseBalances.rows) {
+      runningBalanceAll = runningBalanceAll + Number(entry.credit) - Number(entry.debit);
+      
+      await query(
+        `UPDATE warehouse_balance_sheets 
+         SET balance = $1 
+         WHERE id = $2`,
+        [runningBalanceAll, entry.id]
+      );
+    }
+
+    // Finally, delete the stock increment record
+    await query(
+      `DELETE FROM stock_increments WHERE id = $1`,
+      [stock_increment_id]
+    );
+
+    await query('COMMIT');
+
+    res.json({
+      success: true,
+      message: "Stock increment deleted successfully",
+    });
+  } catch (error) {
+    await query('ROLLBACK');
+    res.status(500).json({ error: error.message });
+    console.log("Error in deleteStockIncrement:", error);
+  } 
+};
+
 export const getStockIncrementBrands = async (req, res) => {
   const { shop_id } = req.params;
 

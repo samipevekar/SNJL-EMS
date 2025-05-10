@@ -67,7 +67,8 @@ const RecordSalePage = ({ navigation }) => {
   const handleCardChange = (data) => {
     setSaleData(prev => ({
       ...prev,
-      [`${data.brand_name}-${data.volume_ml}`]: data
+      [`${data.brand_name}-${data.volume_ml}`]: data,
+      id:data.id
     }));
   };
 
@@ -108,6 +109,7 @@ const RecordSalePage = ({ navigation }) => {
           const isLast = index === salesToSubmit.length - 1;
           return dispatch(createSaleSheetAsync({
             shop_id: shopId,
+            stock_increment_id: item.id,
             brand_name: item.brand_name,
             volume_ml: item.volume_ml,
             sale: item.sale,
@@ -186,6 +188,7 @@ const RecordSalePage = ({ navigation }) => {
                     brand_name={item.brand_name}
                     volume_ml={item.volume_ml}
                     onChange={handleCardChange}
+                    id={item.id}
                   />
                 )}
                 contentContainerStyle={styles.listContent}

@@ -10,92 +10,123 @@ export const createSaleSheet = async (req, res) => {
     expenses,
     upi,
     canteen,
-    sale_date // Add sale_date from request body,
-
+    stock_increment_id,
+    sale_date // Add sale_date from request body
   } = req.body;
 
+
   try {
+    await query('BEGIN');
+
     // Use sale_date from request if provided, otherwise use current date
     const currentDate = sale_date || new Date().toISOString().split("T")[0];
+    const currentDateTime = sale_date ? new Date(sale_date) : new Date();
 
-    // Check for existing sale sheet
+    // Check for existing sale sheet for this date, brand, and shop
     const existingSheet = await query(
-      `SELECT * FROM sale_sheets WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3 AND sale_date = $4`,
+      `SELECT * FROM sale_sheets 
+       WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3 AND sale_date = $4`,
       [shop_id, brand_name, volume_ml, currentDate]
     );
 
-    if(existingSheet.rowCount > 0){
-      return res.status(400).json({ message: "Sale sheet already exists for this date"})
+    if(existingSheet.rowCount > 0) {
+      await query('ROLLBACK');
+      return res.status(400).json({ message: "Sale sheet already exists for this date" });
     }
 
-    const shop = await query(`SELECT * FROM shops WHERE shop_id = $1`, [
-      shop_id,
-    ]);
+    // Get shop details
+    const shop = await query(`SELECT * FROM shops WHERE shop_id = $1`, [shop_id]);
     if (shop.rowCount === 0) {
+      await query('ROLLBACK');
       return res.status(404).json({ message: "Shop not found" });
     }
 
     const liquor_type = shop.rows[0].liquor_type;
 
+    // Validate liquor type
     if (liquor_type === "country" && shop.rows[0].liquor_type !== "country") {
-      return res
-        .status(400)
-        .json({ success: false, error: "Shop does not sell country liquor" });
+      await query('ROLLBACK');
+      return res.status(400).json({ success: false, error: "Shop does not sell country liquor" });
     }
 
-    if (
-      (liquor_type === "foreign" || liquor_type === "beer") &&
-      shop.rows[0].liquor_type !== "foreign"
-    ) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Shop does not sell foreign liquor" });
+    if ((liquor_type === "foreign" || liquor_type === "beer") && shop.rows[0].liquor_type !== "foreign") {
+      await query('ROLLBACK');
+      return res.status(400).json({ success: false, error: "Shop does not sell foreign liquor" });
     }
 
+    // Get brand details
     const brandData = await query(
-      `SELECT mrp_per_unit FROM brands WHERE brand_name = $1 AND liquor_type = $2 AND volume_ml = $3`,
+      `SELECT mrp_per_unit FROM brands 
+       WHERE brand_name = $1 AND liquor_type = $2 AND volume_ml = $3`,
       [brand_name, liquor_type, volume_ml]
     );
 
     if (brandData.rowCount === 0) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          error: "Brand not found with given volume or liquor type",
-        });
+      await query('ROLLBACK');
+      return res.status(404).json({
+        success: false,
+        error: "Brand not found with given volume or liquor type",
+      });
     }
 
     const { mrp_per_unit } = brandData.rows[0];
 
-    // Get opening balance - first try previous closing balance
+    // Get opening balance logic
     let opening_balance;
-    const previousEntry = await query(
-      `SELECT closing_balance FROM sale_sheets 
-       WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3 
-       ORDER BY created_at DESC LIMIT 1`,
-      [shop_id, brand_name, volume_ml]
-    );
 
-    if (previousEntry.rowCount > 0) {
-      // Use previous closing balance if available
-      opening_balance = previousEntry.rows[0].closing_balance;
+    if (sale_date) {
+      // For backdated entries, find the most recent sale sheet BEFORE the provided date
+      const previousEntry = await query(
+        `SELECT closing_balance FROM sale_sheets 
+         WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3 AND sale_date < $4
+         ORDER BY sale_date DESC LIMIT 1`,
+        [shop_id, brand_name, volume_ml, currentDate]
+      );
+
+      if (previousEntry.rowCount > 0) {
+        opening_balance = previousEntry.rows[0].closing_balance;
+      } else {
+        // If no previous sale sheet, get sum of pieces from stock_increments before this date
+        const stockSum = await query(
+          `SELECT COALESCE(SUM(pieces), 0) as total_pieces 
+           FROM stock_increments 
+           WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3 
+           AND created_at <= $4`,
+          [shop_id, brand_name, volume_ml, currentDateTime]
+        );
+        opening_balance = stockSum.rows[0].total_pieces;
+      }
     } else {
-      // If no previous sale sheet, get sum of pieces from stock_increments
-      const stockSum = await query(
-        `SELECT pieces as total_pieces 
-         FROM stock_increments 
-         WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3`,
+      // For current date entries, use the latest closing balance regardless of date
+      const previousEntry = await query(
+        `SELECT closing_balance FROM sale_sheets 
+         WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3
+         ORDER BY sale_date DESC, created_at DESC LIMIT 1`,
         [shop_id, brand_name, volume_ml]
       );
-      opening_balance = stockSum.rows[0]?.total_pieces;
-      if(!opening_balance){
-        return res.status(400).json({success:false,error:"You dont have stock for this brand"})
+
+      if (previousEntry.rowCount > 0) {
+        opening_balance = previousEntry.rows[0].closing_balance;
+      } else {
+        // If no previous sale sheet, get total pieces from stock_increments
+        const stockSum = await query(
+          `SELECT COALESCE(SUM(pieces), 0) as total_pieces 
+           FROM stock_increments 
+           WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3`,
+          [shop_id, brand_name, volume_ml]
+        );
+        opening_balance = stockSum.rows[0].total_pieces;
       }
     }
 
-    // check if sale is greater than opening_balance
+    if (!opening_balance && opening_balance !== 0) {
+      await query('ROLLBACK');
+      return res.status(400).json({success:false, error:"You don't have stock for this brand"});
+    }
+
+    // Check if sale is greater than opening_balance
     if (sale > opening_balance) {
+      await query('ROLLBACK');
       return res.status(400).json({ 
         success: false, 
         error: `Sale (${sale}) cannot be greater than available stock (${opening_balance})`
@@ -103,19 +134,22 @@ export const createSaleSheet = async (req, res) => {
     }
 
     const daily_sale = sale * mrp_per_unit;
-    const total_expenses =
-      expenses?.length > 0
-        ? expenses.reduce((sum, exp) => sum + exp.amount, 0)
-        : 0;
+    const total_expenses = expenses?.length > 0
+      ? expenses.reduce((sum, exp) => sum + exp.amount, 0)
+      : 0;
 
-    // const canteen = shop.rows[0].canteen
     const net_cash = daily_sale - total_expenses + (canteen || 0);
     const cash_in_hand = (net_cash - upi) || 0;
+    const closing_balance = opening_balance - sale;
 
-    // Use the sale_date for both sale_date and created_at fields if provided
+    // Insert the new sale sheet
     const result = await query(
-      `INSERT INTO sale_sheets (shop_id, liquor_type, brand_name, volume_ml, opening_balance, sale, mrp, daily_sale, closing_balance, expenses, upi, net_cash, canteen, cash_in_hand, sale_date, created_at) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
+      `INSERT INTO sale_sheets 
+       (shop_id, liquor_type, brand_name, volume_ml, opening_balance, sale, mrp, 
+        daily_sale, closing_balance, expenses, upi, net_cash, canteen, cash_in_hand, 
+        sale_date, created_at, stock_increment_id) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
+       RETURNING *`,
       [
         shop_id,
         liquor_type,
@@ -125,30 +159,64 @@ export const createSaleSheet = async (req, res) => {
         sale,
         mrp_per_unit,
         daily_sale,
-        opening_balance - sale,
+        closing_balance,
         JSON.stringify(expenses),
         upi,
         net_cash,
         canteen,
         cash_in_hand,
         currentDate,
-        sale_date ? new Date(sale_date) : new Date() // Use sale_date for created_at if provided
+        currentDateTime,
+        stock_increment_id 
       ]
     );
+
+    // If this is a backdated entry, we need to update all subsequent sale sheets
+    if (sale_date) {
+      // Get all sale sheets for this shop/brand/volume after our inserted date
+      const subsequentSheets = await query(
+        `SELECT id, opening_balance, sale, closing_balance 
+         FROM sale_sheets 
+         WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3 
+         AND sale_date > $4
+         ORDER BY sale_date ASC, created_at ASC`,
+        [shop_id, brand_name, volume_ml, currentDate]
+      );
+
+      // Calculate the new opening balance for the first subsequent sheet
+      let newOpeningBalance = closing_balance;
+      
+      // Update each subsequent sheet
+      for (const sheet of subsequentSheets.rows) {
+        // Calculate new closing balance
+        const newClosingBalance = newOpeningBalance - sheet.sale;
+        
+        await query(
+          `UPDATE sale_sheets 
+           SET opening_balance = $1, closing_balance = $2 
+           WHERE id = $3`,
+          [newOpeningBalance, newClosingBalance, sheet.id]
+        );
+        
+        // The next sheet's opening balance is this sheet's new closing balance
+        newOpeningBalance = newClosingBalance;
+      }
+    }
 
     // Balance Sheet Update - Shop
     const prevBalanceShopResult = await query(
       `SELECT balance FROM balance_sheets WHERE type = $1 ORDER BY id DESC LIMIT 1`,
       [shop_id]
     );
-    const previousBalanceShop =
-      prevBalanceShopResult.rows.length > 0
-        ? Number(prevBalanceShopResult.rows[0]?.balance)
-        : 0;
+    const previousBalanceShop = prevBalanceShopResult.rows.length > 0
+      ? Number(prevBalanceShopResult.rows[0]?.balance)
+      : 0;
 
     const newBalanceShop = previousBalanceShop + net_cash;
     await query(
-      `INSERT INTO balance_sheets (type, date, details, debit, credit, balance,sale_sheet_id) VALUES ($1, $2, $3, $4, $5, $6,$7)`,
+      `INSERT INTO balance_sheets 
+       (type, date, details, debit, credit, balance, sale_sheet_id) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         shop_id,
         currentDate,
@@ -164,14 +232,15 @@ export const createSaleSheet = async (req, res) => {
     const prevBalanceAllResult = await query(
       `SELECT balance FROM balance_sheets WHERE type = 'all' ORDER BY id DESC LIMIT 1`
     );
-    const previousBalanceAll =
-      prevBalanceAllResult.rows.length > 0
-        ? Number(prevBalanceAllResult.rows[0]?.balance)
-        : previousBalanceShop;
+    const previousBalanceAll = prevBalanceAllResult.rows.length > 0
+      ? Number(prevBalanceAllResult.rows[0]?.balance)
+      : previousBalanceShop;
 
     const newBalanceAll = previousBalanceAll + net_cash;
     await query(
-      `INSERT INTO balance_sheets (type, date, details, debit, credit, balance,sale_sheet_id) VALUES ($1, $2, $3, $4, $5, $6,$7)`,
+      `INSERT INTO balance_sheets 
+       (type, date, details, debit, credit, balance, sale_sheet_id) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         "all",
         currentDate,
@@ -183,12 +252,15 @@ export const createSaleSheet = async (req, res) => {
       ]
     );
 
+    await query('COMMIT');
+
     res.json({
       success: true,
       message: "Sale sheet created successfully",
       data: result.rows[0],
     });
   } catch (error) {
+    await query('ROLLBACK');
     res.status(500).json({ error: error.message });
     console.log("Error in createSaleSheet:", error);
   }
@@ -214,28 +286,35 @@ export const updateSaleSheet = async (req, res) => {
     isNaN(Number(val)) ? fallback : Number(val);
 
   try {
+    // Start a transaction
+    await query('BEGIN');
+
+    // Get existing sale sheet
     const existingSheetResult = await query(
       `SELECT * FROM sale_sheets WHERE id = $1`,
       [id]
     );
-    if (existingSheetResult.rowCount === 0)
+    if (existingSheetResult.rowCount === 0) {
+      await query('ROLLBACK');
       return res.status(404).json({ message: "Sale sheet not found" });
+    }
 
     const existingSheet = existingSheetResult.rows[0];
+    const shop_id = existingSheet.shop_id;
 
     const updatedLiquorType = liquor_type ?? existingSheet.liquor_type;
     const updatedVolume = volume_ml ?? existingSheet.volume_ml;
     const updatedBrand = brand_name ?? existingSheet.brand_name;
 
+    // Get brand MRP
     const brandData = await query(
       `SELECT mrp_per_unit FROM brands WHERE brand_name = $1 AND liquor_type = $2 AND volume_ml = $3`,
       [updatedBrand, updatedLiquorType, updatedVolume]
     );
 
     if (brandData.rowCount === 0) {
-      return res
-        .status(404)
-        .json({ message: "Brand not found with given details" });
+      await query('ROLLBACK');
+      return res.status(404).json({ message: "Brand not found with given details" });
     }
 
     const { mrp_per_unit } = brandData.rows[0];
@@ -246,7 +325,16 @@ export const updateSaleSheet = async (req, res) => {
       existingSheet.opening_balance
     );
 
-    // Handle expenses - ensure they're properly parsed and validated
+    // Validate sale doesn't exceed opening balance
+    if (validSale > opening_balance) {
+      await query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        error: `Sale (${validSale}) cannot be greater than available stock (${opening_balance})`,
+      });
+    }
+
+    // Handle expenses
     let parsedExpenses = [];
     if (expenses) {
       parsedExpenses = Array.isArray(expenses)
@@ -266,19 +354,12 @@ export const updateSaleSheet = async (req, res) => {
       0
     );
 
-    // Validate sale doesn't exceed opening balance
-    if (validSale > opening_balance) {
-      return res.status(400).json({
-        success: false,
-        error: `Sale (${validSale}) cannot be greater than available stock (${opening_balance})`,
-      });
-    }
-
     const daily_sale = validSale * mrp_per_unit;
     const net_cash = daily_sale - total_expenses + (canteen || 0); 
     const cash_in_hand = net_cash - parseNumber(upi ?? existingSheet.upi, 0);
     const closing_balance = opening_balance - validSale;
 
+    // Update the current sale sheet
     const result = await query(
       `UPDATE sale_sheets
        SET brand_name = $1, liquor_type = $2, volume_ml = $3, mrp = $4, sale = $5,
@@ -301,6 +382,48 @@ export const updateSaleSheet = async (req, res) => {
         id,
       ]
     );
+
+    // Get all subsequent sale sheets for the same brand, volume and shop
+    const subsequentSheets = await query(
+      `SELECT id, opening_balance, sale, closing_balance 
+       FROM sale_sheets 
+       WHERE shop_id = $1 AND brand_name = $2 AND volume_ml = $3 
+       AND sale_date > $4
+       ORDER BY sale_date ASC`,
+      [shop_id, updatedBrand, updatedVolume, existingSheet.sale_date]
+    );
+
+    // Calculate new opening and closing balances for subsequent sheets
+    let previousClosing = closing_balance;
+    let hasStockError = false;
+
+    for (const sheet of subsequentSheets.rows) {
+      // Check if the new opening balance would be less than the sale
+      if (previousClosing < sheet.sale) {
+        hasStockError = true;
+        break;
+      }
+      
+      const newClosing = previousClosing - sheet.sale;
+      
+      // Update the subsequent sheet
+      await query(
+        `UPDATE sale_sheets 
+         SET opening_balance = $1, closing_balance = $2 
+         WHERE id = $3`,
+        [previousClosing, newClosing, sheet.id]
+      );
+      
+      previousClosing = newClosing;
+    }
+
+    if (hasStockError) {
+      await query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        error: "Cannot update as it would make opening balance less than sale for subsequent sheets"
+      });
+    }
 
     const currentDate = new Date().toISOString().split("T")[0];
 
@@ -338,8 +461,11 @@ export const updateSaleSheet = async (req, res) => {
       }
     };
 
-    await updateAndCascadeBalances(existingSheet.shop_id);
+    await updateAndCascadeBalances(shop_id);
     await updateAndCascadeBalances("all");
+
+    // Commit the transaction
+    await query('COMMIT');
 
     res.json({
       success: true,
@@ -347,6 +473,7 @@ export const updateSaleSheet = async (req, res) => {
       data: result.rows[0],
     });
   } catch (err) {
+    await query('ROLLBACK');
     console.error("Error in updateSaleSheet:", err);
     res.status(500).json({ 
       success: false,
@@ -354,7 +481,6 @@ export const updateSaleSheet = async (req, res) => {
     });
   }
 };
-
 
 // delete sale_sheet
 export const deleteSaleSheet = async (req, res) => {

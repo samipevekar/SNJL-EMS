@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-nativ
 import { useForm } from 'react-hook-form';
 import colors from '../theme/colors';
 
-const StockIncrementCard = ({ brand_name, volume_ml, onChange }) => {
+const StockIncrementCard = ({ brand_name, volume_ml,id, onChange }) => {
   const { control, watch, setValue } = useForm({
     defaultValues: {
       sale: '',
@@ -17,7 +17,8 @@ const StockIncrementCard = ({ brand_name, volume_ml, onChange }) => {
     onChange({
       brand_name,
       volume_ml,
-      sale: parseInt(saleValue) || 0
+      sale: parseInt(saleValue) || 0,
+      id
     });
   }, [saleValue]);
 
