@@ -36,6 +36,7 @@ const EditSaleSheetModal = ({ visible, onClose, saleSheet }) => {
       expenses: expenses
     })).then(() => {
       onClose();
+      Alert.alert('Success', 'Sale sheet updated')
     });
   };
 

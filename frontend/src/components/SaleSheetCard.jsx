@@ -4,7 +4,7 @@ import colors from '../theme/colors';
 import { formatDateLeft } from '../utils/formatDateLeft';
 import { useNavigation } from '@react-navigation/native';
 
-const SaleSheetCard = ({ item, showDate, showEditButton, onEditPress }) => {
+const SaleSheetCard = ({ item, showDate, showEditButton = true, onEditPress }) => {
   const navigation = useNavigation();
 
   const handlePress = () => {

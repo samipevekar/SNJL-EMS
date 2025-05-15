@@ -33,6 +33,7 @@ CREATE TABLE sale_sheets (
     cash_in_hand INTEGER GENERATED ALWAYS AS (net_cash - upi) STORED, -- Auto-calculated
     canteen INTEGER NOT NULL DEFAULT 100, -- Constant value
     sale_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    w_stock BOOLEAN NOT NULL DEFAULT false
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     stock_increment_id int references stock_increments(id)
 );
@@ -64,6 +65,7 @@ CREATE TABLE stock_increments (
     warehouse_name VARCHAR(255) NOT NULL,
     cases INTEGER NOT NULL,
     pieces INTEGER NOT NULL,
+    w_stock BOOLEAN NOT NULL DEFAULT false
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

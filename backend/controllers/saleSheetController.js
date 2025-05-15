@@ -1,6 +1,5 @@
 import { query } from "../db/db.js";
 
-// create sale sheet
 export const createSaleSheet = async (req, res) => {
   const {
     shop_id,
@@ -11,9 +10,9 @@ export const createSaleSheet = async (req, res) => {
     upi,
     canteen,
     stock_increment_id,
-    sale_date // Add sale_date from request body
+    sale_date,
+    w_stock = false
   } = req.body;
-
 
   try {
     await query('BEGIN');
@@ -142,13 +141,13 @@ export const createSaleSheet = async (req, res) => {
     const cash_in_hand = (net_cash - upi) || 0;
     const closing_balance = opening_balance - sale;
 
-    // Insert the new sale sheet
+    // Insert the new sale sheet with w_stock flag
     const result = await query(
       `INSERT INTO sale_sheets 
        (shop_id, liquor_type, brand_name, volume_ml, opening_balance, sale, mrp, 
         daily_sale, closing_balance, expenses, upi, net_cash, canteen, cash_in_hand, 
-        sale_date, created_at, stock_increment_id) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
+        sale_date, created_at, stock_increment_id, w_stock) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) 
        RETURNING *`,
       [
         shop_id,
@@ -167,7 +166,8 @@ export const createSaleSheet = async (req, res) => {
         cash_in_hand,
         currentDate,
         currentDateTime,
-        stock_increment_id 
+        stock_increment_id,
+        w_stock
       ]
     );
 
@@ -203,54 +203,64 @@ export const createSaleSheet = async (req, res) => {
       }
     }
 
-    // Balance Sheet Update - Shop
-    const prevBalanceShopResult = await query(
-      `SELECT balance FROM balance_sheets WHERE type = $1 ORDER BY id DESC LIMIT 1`,
-      [shop_id]
-    );
-    const previousBalanceShop = prevBalanceShopResult.rows.length > 0
-      ? Number(prevBalanceShopResult.rows[0]?.balance)
-      : 0;
+    // Balance Sheet Update Logic
+    const balanceSheetTypes = w_stock ? ['all', 'w_stock'] : ['all', shop_id];
 
-    const newBalanceShop = previousBalanceShop + net_cash;
-    await query(
-      `INSERT INTO balance_sheets 
-       (type, date, details, debit, credit, balance, sale_sheet_id) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        shop_id,
-        currentDate,
-        "Net Cash",
-        0,
-        net_cash,
-        newBalanceShop,
-        result.rows[0].id,
-      ]
-    );
+    for (const type of balanceSheetTypes) {
+      // Get the balance just before our current date
+      const prevBalanceResult = await query(
+        `SELECT balance FROM balance_sheets 
+         WHERE type = $1 AND date <= $2 
+         ORDER BY date DESC, id DESC LIMIT 1`,
+        [type, currentDate]
+      );
 
-    // Balance Sheet Update - All
-    const prevBalanceAllResult = await query(
-      `SELECT balance FROM balance_sheets WHERE type = 'all' ORDER BY id DESC LIMIT 1`
-    );
-    const previousBalanceAll = prevBalanceAllResult.rows.length > 0
-      ? Number(prevBalanceAllResult.rows[0]?.balance)
-      : previousBalanceShop;
+      const previousBalance = prevBalanceResult.rows.length > 0
+        ? Number(prevBalanceResult.rows[0]?.balance)
+        : 0;
 
-    const newBalanceAll = previousBalanceAll + net_cash;
-    await query(
-      `INSERT INTO balance_sheets 
-       (type, date, details, debit, credit, balance, sale_sheet_id) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        "all",
-        currentDate,
-        "Net Cash",
-        0,
-        net_cash,
-        newBalanceAll,
-        result.rows[0].id,
-      ]
-    );
+      const newBalance = previousBalance + net_cash;
+
+      // Insert the new balance sheet entry
+      await query(
+        `INSERT INTO balance_sheets 
+         (type, date, details, debit, credit, balance, sale_sheet_id) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          type,
+          currentDate,
+          "Net Cash",
+          0,
+          net_cash,
+          newBalance,
+          result.rows[0].id,
+        ]
+      );
+
+      // If this is a backdated entry, update all subsequent balance entries
+      if (sale_date) {
+        // Get all balance entries after our current date
+        const subsequentBalances = await query(
+          `SELECT id, credit, balance FROM balance_sheets 
+           WHERE type = $1 AND date > $2 
+           ORDER BY date ASC, id ASC`,
+          [type, currentDate]
+        );
+
+        // Update each subsequent balance entry
+        let runningBalance = newBalance;
+        for (const balanceEntry of subsequentBalances.rows) {
+          runningBalance += Number(balanceEntry.credit);
+          
+          await query(
+            `UPDATE balance_sheets 
+             SET balance = $1 
+             WHERE id = $2`,
+            [runningBalance, balanceEntry.id]
+          );
+        }
+      }
+    }
 
     await query('COMMIT');
 

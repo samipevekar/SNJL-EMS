@@ -68,7 +68,8 @@ const RecordSalePage = ({ navigation }) => {
     setSaleData(prev => ({
       ...prev,
       [`${data.brand_name}-${data.volume_ml}`]: data,
-      id:data.id
+      id:data.id,
+      w_stock:data.w_stock
     }));
   };
 
@@ -104,6 +105,8 @@ const RecordSalePage = ({ navigation }) => {
         return;
       }
 
+      console.log(salesToSubmit)
+
       const result = await Promise.all(
         salesToSubmit.map((item, index) => {
           const isLast = index === salesToSubmit.length - 1;
@@ -113,6 +116,7 @@ const RecordSalePage = ({ navigation }) => {
             brand_name: item.brand_name,
             volume_ml: item.volume_ml,
             sale: item.sale,
+            w_stock: item.w_stock,
             upi: isLast && upiAmount ? parseInt(upiAmount) : 0,
             expenses: isLast && expenses.length > 0 ? expenses : [],
             canteen: isLast && canteenAmount ? parseInt(canteenAmount) : 0
@@ -143,13 +147,13 @@ const RecordSalePage = ({ navigation }) => {
     );
   }
 
-  if (status === 'failed') {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>Failed to load brands</Text>
-      </View>
-    );
-  }
+  // if (status === 'failed') {
+  //   return (
+  //     <View style={styles.container}>
+  //       <Text style={styles.errorText}>Failed to load brands</Text>
+  //     </View>
+  //   );
+  // }
 
   return (
     <KeyboardAvoidingView 
@@ -189,6 +193,7 @@ const RecordSalePage = ({ navigation }) => {
                     volume_ml={item.volume_ml}
                     onChange={handleCardChange}
                     id={item.id}
+                    w_stock={item.w_stock}
                   />
                 )}
                 contentContainerStyle={styles.listContent}

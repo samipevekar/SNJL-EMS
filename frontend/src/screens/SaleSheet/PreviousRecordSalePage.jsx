@@ -89,7 +89,8 @@ const PreviousRecordSalePage = ({ navigation }) => {
     setSaleData(prev => ({
       ...prev,
       [`${data.brand_name}-${data.volume_ml}`]: data,
-      id:data.id
+      id:data.id,
+      w_stock:data.w_stock
     }));
   };
 
@@ -135,6 +136,7 @@ const PreviousRecordSalePage = ({ navigation }) => {
             brand_name: item.brand_name,
             volume_ml: item.volume_ml,
             sale: item.sale,
+            w_stock: item.w_stock,
             upi: isLast && upiAmount ? parseInt(upiAmount) : 0,
             expenses: isLast && expenses.length > 0 ? expenses : [],
             canteen: isLast && canteenAmount ? parseInt(canteenAmount) : 0,
@@ -248,6 +250,7 @@ const PreviousRecordSalePage = ({ navigation }) => {
                     volume_ml={item.volume_ml}
                     onChange={handleCardChange}
                     id={item.id}
+                    w_stock={item.w_stock}
                   />
                 )}
                 contentContainerStyle={styles.listContent}

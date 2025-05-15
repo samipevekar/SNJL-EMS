@@ -24,7 +24,7 @@ import { getShopByIdAsync, selectSpecificShop } from '../../redux/slice/shopSlic
 const StockIncrementForm = ({navigation}) => {
   const dispatch = useDispatch();
   const brandOptions = useSelector(selectBrands);
-  const warehouseOptions = useSelector(selectWarehouses); // Your warehouse options
+  const warehouseOptions = useSelector(selectWarehouses);
   const status = useSelector(selectAddStockStatus);
   const error = useSelector(selectAddStockError);
   const user = useSelector(selectUser);
@@ -33,6 +33,7 @@ const StockIncrementForm = ({navigation}) => {
 
   const [brandModalVisible, setBrandModalVisible] = useState(false);
   const [warehouseModalVisible, setWarehouseModalVisible] = useState(false);
+  const [stockTypeModalVisible, setStockTypeModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentBrandIndex, setCurrentBrandIndex] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -48,7 +49,7 @@ const StockIncrementForm = ({navigation}) => {
     defaultValues: {
       warehouse_name: '',
       bill_id: '',
-      brands: [{ brand_name: '', volume_ml: '', cases: '' }],
+      brands: [{ brand_name: '', volume_ml: '', cases: '', stock_type: 'non-W' }],
     },
   });
 
@@ -71,6 +72,7 @@ const StockIncrementForm = ({navigation}) => {
         volume_ml: Number(brand.volume_ml),
         warehouse_name: data.warehouse_name,
         cases: Number(brand.cases),
+        w_stock: brand.stock_type === 'W' // true if W, false if non-W
       };
       
       return dispatch(addStockIncrement(stockData)).unwrap();
@@ -113,16 +115,14 @@ const StockIncrementForm = ({navigation}) => {
     return () => {
       dispatch(clearBrands());
     };
-  }, [user?.assigned_shops[0]]); // This effect runs when the assigned shop changes
-
-
+  }, [user?.assigned_shops[0]]);
 
   const filteredBrands = brandOptions.filter(brand =>
     brand.brand_name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleAddBrand = () => {
-    append({ brand_name: '', volume_ml: '', cases: '' });
+    append({ brand_name: '', volume_ml: '', cases: '', stock_type: 'non-W' });
   };
 
   const handleRemoveBrand = (index) => {
@@ -193,7 +193,7 @@ const StockIncrementForm = ({navigation}) => {
               onBlur={onBlur}
               value={value}
               placeholder="Enter volume in ml"
-              editable={false} // Volume will be auto-filled when brand is selected
+              editable={false}
             />
           )}
         />
@@ -230,6 +230,35 @@ const StockIncrementForm = ({navigation}) => {
           <Text style={styles.errorText}>{errors.brands[index].cases.message}</Text>
         )}
       </View>
+
+      {/* Stock Type */}
+      <View style={styles.fieldContainer}>
+        <Text style={styles.label}>Stock Type *</Text>
+        <Controller
+          control={control}
+          name={`brands.${index}.stock_type`}
+          rules={{ required: 'Stock type is required' }}
+          render={({ field: { value } }) => (
+            <>
+              <TouchableOpacity 
+                style={[styles.input, errors.brands?.[index]?.stock_type && styles.errorInput]}
+                onPress={() => {
+                  setCurrentBrandIndex(index);
+                  setStockTypeModalVisible(true);
+                }}
+              >
+                <Text style={value ? styles.pickerText : styles.placeholderText}>
+                  {value || 'Select Stock Type'}
+                </Text>
+                <Icon name="arrow-drop-down" size={24} color={colors.primary} />
+              </TouchableOpacity>
+              {errors.brands?.[index]?.stock_type && (
+                <Text style={styles.errorText}>{errors.brands[index].stock_type.message}</Text>
+              )}
+            </>
+          )}
+        />
+      </View>
     </View>
   );
 
@@ -242,6 +271,7 @@ const StockIncrementForm = ({navigation}) => {
         <Text style={styles.heading}>Add Stock</Text>
         <TouchableOpacity onPress={()=>navigation.navigate('AllStockPage')}><Text style={styles.allStocks}>All Stocks</Text></TouchableOpacity>
       </View>
+      
       {/* Warehouse Name */}
       <View style={styles.fieldContainer}>
         <Text style={styles.label}>Warehouse Name *</Text>
@@ -403,6 +433,42 @@ const StockIncrementForm = ({navigation}) => {
             )}
             contentContainerStyle={styles.listContent}
           /> : <ActivityIndicator size={'large'} color={colors.primary}/> }
+        </View>
+      </Modal>
+
+      {/* Stock Type Selection Modal */}
+      <Modal
+        visible={stockTypeModalVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setStockTypeModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Stock Type</Text>
+            <TouchableOpacity
+              onPress={() => setStockTypeModalVisible(false)}
+            >
+              <Icon name="close" size={24} color={colors.danger} />
+            </TouchableOpacity>
+          </View>
+          
+          <FlatList
+            data={['W', 'non-W']}
+            keyExtractor={(item) => item}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.warehouseItem}
+                onPress={() => {
+                  setValue(`brands.${currentBrandIndex}.stock_type`, item);
+                  setStockTypeModalVisible(false);
+                }}
+              >
+                <Text style={styles.warehouseText}>{item}</Text>
+              </TouchableOpacity>
+            )}
+            contentContainerStyle={styles.listContent}
+          />
         </View>
       </Modal>
     </ScrollView>
@@ -568,7 +634,6 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 17,
     fontWeight: '600',
-
   },
   modalHeader: {
     flexDirection: 'row',

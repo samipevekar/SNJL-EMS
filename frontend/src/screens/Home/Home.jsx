@@ -173,6 +173,12 @@ const Home = () => {
       roles: ['super_user','manager'],
     },
     {
+      title: 'Transfer Stock',
+      icon: 'archive-sync-outline',
+      screen: 'TransferStockPage',
+      roles: ['super_user','manager'],
+    },
+    {
       title: 'Record Previous Sale Sheets',
       icon: 'arrow-left',
       screen: 'PreviousRecordSalePage',

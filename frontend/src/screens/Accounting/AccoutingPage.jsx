@@ -18,7 +18,6 @@ const AccountingPage = () => {
   const [showToDate, setShowToDate] = useState(false);
   const navigation = useNavigation();
 
-
   const dispatch = useDispatch();
   useEffect(() => {
     dispatch(getAllShopsAsync());
@@ -50,6 +49,15 @@ const AccountingPage = () => {
       ],
       nameField: 'name'
     },
+    {
+      title: 'W Stock',
+      type: 'w_stock',
+      items: [
+        {name: 'Warehouse W Stock', category: 'warehouse'},
+        {name: 'Shop W Stock', category: 'shop'}
+      ],
+      nameField: 'name'
+    }
   ];
 
   const handleCardPress = section => {
@@ -76,6 +84,16 @@ const AccountingPage = () => {
           toDate,
           isOverall: true,
         });
+      } else if (type === 'w_stock') {
+        navigation.navigate('BalanceSheetPage', {
+          type: category,
+          shop_id: category === 'shop' ? 'w_stock' : null,
+          warehouse_name: category === 'warehouse' ? 'w_stock' : null,
+          fromDate,
+          toDate,
+          isOverall: false,
+          isWStock: true
+        });
       } else {
         navigation.navigate('BalanceSheetPage', {
           type,
@@ -90,7 +108,7 @@ const AccountingPage = () => {
   };
 
   const getDisplayName = (item, section) => {
-    if (section.type === 'overall') return item.name;
+    if (section.type === 'overall' || section.type === 'w_stock') return item.name;
     return section.type === 'shop' 
       ? `${item.shop_name} (${item.shop_id})`
       : item.warehouse_name;

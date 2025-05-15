@@ -26,7 +26,7 @@ import Share from "react-native-share";
 import {formatDateLeft } from "../../utils/formatDateLeft";
 
 const BalanceSheetPage = ({ route }) => {
-  const { shop_id, fromDate, toDate, category, type, warehouse_name, isOverall } = route.params;
+  const { shop_id, fromDate, toDate, category, type, warehouse_name, isOverall, isWStock } = route.params;
 
   const dispatch = useDispatch();
   const shopBalanceSheets = useSelector(selectShopBalanceSheets);
@@ -37,7 +37,22 @@ const BalanceSheetPage = ({ route }) => {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (type === "shop" && isOverall) {
+    if (isWStock) {
+      if (type === "warehouse") {
+        dispatch(getWarehouseBalanceSheetsAsync({ 
+          warehouse_name: 'w_stock', 
+          date1: fromDate, 
+          date2: toDate 
+        }));
+      } else {
+        dispatch(getShopBalanceSheetsAsync({ 
+          shop_id: 'w_stock', 
+          date1: fromDate, 
+          date2: toDate 
+        }));
+      }
+    }
+    else if (type === "shop" && isOverall) {
       dispatch(getShopBalanceSheetsAsync({ date1: fromDate, date2: toDate }));
     } else if (type === "shop" && shop_id) {
       dispatch(getShopBalanceSheetsAsync({ shop_id, date1: fromDate, date2: toDate }));
@@ -46,11 +61,11 @@ const BalanceSheetPage = ({ route }) => {
     } else if (type === "warehouse" && warehouse_name) {
       dispatch(getWarehouseBalanceSheetsAsync({ warehouse_name, date1: fromDate, date2: toDate }));
     }
-  }, [dispatch, shop_id, warehouse_name, fromDate, toDate, type, isOverall]);
+  }, [dispatch, shop_id, warehouse_name, fromDate, toDate, type, isOverall, isWStock]);
 
   const balanceSheetData = type === "shop" ? shopBalanceSheets : warehouseBalanceSheets;
 
-  
+  console.log(balanceSheetData)
 
   const generatePDF = async () => {
     try {
@@ -63,6 +78,10 @@ const BalanceSheetPage = ({ route }) => {
           return;
         }
       }
+
+      const title = isWStock ? 
+        `${type === 'warehouse' ? 'Warehouse W Stock' : 'Shop W Stock'}` : 
+        'Balance Sheet';
 
       const totalDebit = balanceSheetData.reduce(
         (sum, row) => sum + (parseFloat(row.debit?.replace(/₹|,/g, "")) || 0),
@@ -78,9 +97,9 @@ const BalanceSheetPage = ({ route }) => {
 
       const htmlContent = `
         <div style="padding: 20px 30px;">
-          <h1 style="text-align:center;">Balance Sheet</h1>
-          ${warehouse_name ? `<p style="text-align:center;"><strong>Name:</strong> ${warehouse_name}</p>` : ""}
-          ${shop_id ? `<p style="text-align:center;"><strong>Shop ID:</strong> ${shop_id}</p>` : ""}
+          <h1 style="text-align:center;">${title}</h1>
+          ${warehouse_name && warehouse_name !== 'w_stock' ? `<p style="text-align:center;"><strong>Name:</strong> ${warehouse_name}</p>` : ""}
+          ${shop_id && shop_id !== 'w_stock' ? `<p style="text-align:center;"><strong>Shop ID:</strong> ${shop_id}</p>` : ""}
           <p style="text-align:center;"> ${formatDateLeft(fromDate)} to ${formatDateLeft(toDate)}</p>
 
           <table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse:collapse; margin-top: 20px;">
@@ -140,7 +159,7 @@ const BalanceSheetPage = ({ route }) => {
         </div>
       `;
 
-      const fileName = `BalanceSheet_${Date.now()}`;
+      const fileName = `${title.replace(/\s+/g, '_')}_${Date.now()}`;
       let filePath;
 
       if (Platform.OS === "android" && Platform.Version >= 30) {
@@ -170,11 +189,10 @@ const BalanceSheetPage = ({ route }) => {
       const fileExists = await RNFS.exists(file.filePath);
 
       if (fileExists) {
-        // Alert.alert("Success", `PDF saved successfully.`);
         await Share.open({
           url: `file://${file.filePath}`,
           type: "application/pdf",
-          title: "Share Balance Sheet PDF",
+          title: `Share ${title} PDF`,
         });
       } else {
         Alert.alert("Error", "PDF file not found after creation.");
@@ -203,8 +221,12 @@ const BalanceSheetPage = ({ route }) => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>Balance Sheet</Text>
-      {(type === "warehouse" || type === "shop") && warehouse_name && (
+      <Text style={styles.heading}>
+        {isWStock ? 
+          `${type === 'warehouse' ? 'Warehouse W Stock' : 'Shop W Stock'}` : 
+          'Balance Sheet'}
+      </Text>
+      {(type === "warehouse" || type === "shop") && warehouse_name && warehouse_name !== 'w_stock' && (
         <Text style={styles.subHeading}>{warehouse_name}</Text>
       )}
       <Text style={styles.dateText}>

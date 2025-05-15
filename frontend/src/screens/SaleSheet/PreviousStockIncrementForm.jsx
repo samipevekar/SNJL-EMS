@@ -36,6 +36,7 @@ const PreviousStockIncrementForm = ({navigation}) => {
 
   const [brandModalVisible, setBrandModalVisible] = useState(false);
   const [warehouseModalVisible, setWarehouseModalVisible] = useState(false);
+  const [stockTypeModalVisible, setStockTypeModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentBrandIndex, setCurrentBrandIndex] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -59,7 +60,7 @@ const PreviousStockIncrementForm = ({navigation}) => {
     defaultValues: {
       warehouse_name: '',
       bill_id: '',
-      brands: [{ brand_name: '', volume_ml: '', cases: '' }],
+      brands: [{ brand_name: '', volume_ml: '', cases: '', stock_type: 'non-W'}],
     },
   });
 
@@ -90,7 +91,8 @@ const PreviousStockIncrementForm = ({navigation}) => {
         volume_ml: Number(brand.volume_ml),
         warehouse_name: data.warehouse_name,
         cases: Number(brand.cases),
-        stock_date: formattedDate
+        stock_date: formattedDate,
+        w_stock: brand.stock_type === 'W'
       };
       
       return dispatch(addStockIncrement(stockData)).unwrap();
@@ -130,7 +132,7 @@ const PreviousStockIncrementForm = ({navigation}) => {
   );
 
   const handleAddBrand = () => {
-    append({ brand_name: '', volume_ml: '', cases: '' });
+    append({ brand_name: '', volume_ml: '', cases: '', stock_type: 'non-W' });
   };
 
   const handleRemoveBrand = (index) => {
@@ -244,6 +246,35 @@ const PreviousStockIncrementForm = ({navigation}) => {
           <Text style={styles.errorText}>{errors.brands[index].cases.message}</Text>
         )}
       </View>
+
+      {/* Stock Type */}
+            <View style={styles.fieldContainer}>
+              <Text style={styles.label}>Stock Type *</Text>
+              <Controller
+                control={control}
+                name={`brands.${index}.stock_type`}
+                rules={{ required: 'Stock type is required' }}
+                render={({ field: { value } }) => (
+                  <>
+                    <TouchableOpacity 
+                      style={[styles.input, errors.brands?.[index]?.stock_type && styles.errorInput]}
+                      onPress={() => {
+                        setCurrentBrandIndex(index);
+                        setStockTypeModalVisible(true);
+                      }}
+                    >
+                      <Text style={value ? styles.pickerText : styles.placeholderText}>
+                        {value || 'Select Stock Type'}
+                      </Text>
+                      <Icon name="arrow-drop-down" size={24} color={colors.primary} />
+                    </TouchableOpacity>
+                    {errors.brands?.[index]?.stock_type && (
+                      <Text style={styles.errorText}>{errors.brands[index].stock_type.message}</Text>
+                    )}
+                  </>
+                )}
+              />
+            </View>
     </View>
   );
 
@@ -465,6 +496,42 @@ const PreviousStockIncrementForm = ({navigation}) => {
           /> : <ActivityIndicator size={'large'} color={colors.primary}/> }
         </View>
       </Modal>
+
+      {/* Stock Type Selection Modal */}
+            <Modal
+              visible={stockTypeModalVisible}
+              animationType="slide"
+              transparent={false}
+              onRequestClose={() => setStockTypeModalVisible(false)}
+            >
+              <View style={styles.modalContainer}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Select Stock Type</Text>
+                  <TouchableOpacity
+                    onPress={() => setStockTypeModalVisible(false)}
+                  >
+                    <Icon name="close" size={24} color={colors.danger} />
+                  </TouchableOpacity>
+                </View>
+                
+                <FlatList
+                  data={['W', 'non-W']}
+                  keyExtractor={(item) => item}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.warehouseItem}
+                      onPress={() => {
+                        setValue(`brands.${currentBrandIndex}.stock_type`, item);
+                        setStockTypeModalVisible(false);
+                      }}
+                    >
+                      <Text style={styles.warehouseText}>{item}</Text>
+                    </TouchableOpacity>
+                  )}
+                  contentContainerStyle={styles.listContent}
+                />
+              </View>
+            </Modal>
     </ScrollView>
   );
 };

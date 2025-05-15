@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import axiosInstance from "../../Helpers/axiosinstance";
+import { Alert } from "react-native";
 
 const initialState = {
   brands: [],
@@ -11,6 +12,8 @@ const initialState = {
   updateStockError: null,
   deleteStockStatus: 'idle',
   deleteStockError: null,
+  transferStatus: 'idle',
+  transferError: null
 }
 
 export const fetchStockIncrementBrands = createAsyncThunk(
@@ -64,6 +67,24 @@ export const deleteStockIncrement = createAsyncThunk(
   }
 );
 
+export const transferStock = createAsyncThunk(
+  'stock/transfer',
+  async (transferData, { rejectWithValue }) => {
+    try {
+      const response = await axiosInstance.post('/stock-increment/transfer-stock', transferData);
+
+      if (!response.data.success) {
+        // Reject with value so that extraReducers can catch it
+        return rejectWithValue(response.data.error);
+      }
+      return response.data;
+    } catch (error) {
+      console.log(error)
+      return rejectWithValue(error.response?.data?.error || "Failed to transfer stock");
+    }
+  }
+);
+
 const stockIncrementSlice = createSlice({
   name: "stockIncrement",
   initialState,
@@ -84,6 +105,10 @@ const stockIncrementSlice = createSlice({
     resetDeleteStockStatus: (state) => {
       state.deleteStockStatus = 'idle';
       state.deleteStockError = null;
+    },
+    resetTransferStatus: (state) => {
+      state.transferStatus = 'idle';
+      state.transferError = null;
     }
 
   },
@@ -136,11 +161,22 @@ const stockIncrementSlice = createSlice({
       .addCase(deleteStockIncrement.rejected, (state, action) => {
         state.deleteStockStatus = 'failed';
         state.deleteStockError = action.payload;
+      })
+
+      .addCase(transferStock.pending, (state) => {
+        state.transferStatus = 'loading';
+      })
+      .addCase(transferStock.fulfilled, (state) => {
+        state.transferStatus = 'succeeded';
+      })
+      .addCase(transferStock.rejected, (state, action) => {
+        state.transferStatus = 'failed';
+        state.transferError = action.payload;
       });
   }
 });
 
-export const { clearBrands, resetAddStockStatus, resetUpdateStockStatus, resetDeleteStockStatus } = stockIncrementSlice.actions;
+export const { clearBrands, resetAddStockStatus, resetUpdateStockStatus, resetTransferStatus, resetDeleteStockStatus } = stockIncrementSlice.actions;
 
 // Selectors
 export const selectStockIncrementBrands = (state) => state.stockIncrement.brands;
@@ -152,5 +188,7 @@ export const selectUpdateStockStatus = (state) => state.stockIncrement.updateSto
 export const selectUpdateStockError = (state) => state.stockIncrement.updateStockError;
 export const selectDeleteStockStatus = (state) => state.stockIncrement.deleteStockStatus;
 export const selectDeleteStockError = (state) => state.stockIncrement.deleteStockError;
+export const selectTransferStatus = (state) => state.stockIncrement.transferStatus;
+export const selectTransferError = (state) => state.stockIncrement.transferError;
 
 export default stockIncrementSlice.reducer;
