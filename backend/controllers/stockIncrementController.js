@@ -478,12 +478,11 @@ export const updateStockIncrement = async (req, res) => {
 
 // delete stock increment
 export const deleteStockIncrement = async (req, res) => {
-  const { id:stock_increment_id } = req.params;
+  const { id: stock_increment_id } = req.params;
 
   if (!stock_increment_id) {
     return res.status(400).json({ error: "Stock increment ID is required" });
   }
-
 
   try {
     await query('BEGIN');
@@ -577,6 +576,22 @@ export const deleteStockIncrement = async (req, res) => {
          SET ${quarterField} = ${quarterField} + $1 
          WHERE shop_id = $2`,
         [totalValue, shop_id]
+      );
+    }
+
+    // Get all sale sheets that reference this stock increment
+    const saleSheetsToDelete = await query(
+      `SELECT id FROM sale_sheets WHERE stock_increment_id = $1`,
+      [stock_increment_id]
+    );
+
+    const saleSheetIds = saleSheetsToDelete.rows.map(row => row.id);
+
+    // Delete balance sheets that reference these sale sheets
+    if (saleSheetIds.length > 0) {
+      await query(
+        `DELETE FROM balance_sheets WHERE sale_sheet_id IN (${saleSheetIds.map((_, i) => `$${i + 1}`).join(',')})`,
+        saleSheetIds
       );
     }
 
@@ -691,7 +706,7 @@ export const deleteStockIncrement = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Stock increment deleted successfully",
+      message: "Stock increment and all related sale sheets and balance sheets deleted successfully",
     });
   } catch (error) {
     await query('ROLLBACK');
