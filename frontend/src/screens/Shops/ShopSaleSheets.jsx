@@ -62,7 +62,7 @@ const ShopSaleSheets = ({ route }) => {
 
   if (loading) {
     return (
-      <ActivityIndicator size={'large'} color={colors.primary} style={styles.ActivityIndicator} />
+      <ActivityIndicator size={'small'} color={colors.primary} style={styles.ActivityIndicator} />
     );
   }
 

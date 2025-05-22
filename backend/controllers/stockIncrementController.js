@@ -587,12 +587,58 @@ export const deleteStockIncrement = async (req, res) => {
 
     const saleSheetIds = saleSheetsToDelete.rows.map(row => row.id);
 
+    // Get dates of all balance sheets that will be deleted for recalculation
+    let balanceSheetDates = [];
+    if (saleSheetIds.length > 0) {
+      const balanceSheets = await query(
+        `SELECT DISTINCT date FROM balance_sheets 
+         WHERE sale_sheet_id IN (${saleSheetIds.map((_, i) => `$${i + 1}`).join(',')})`,
+        saleSheetIds
+      );
+      balanceSheetDates = balanceSheets.rows.map(row => row.date);
+    }
+
     // Delete balance sheets that reference these sale sheets
     if (saleSheetIds.length > 0) {
       await query(
         `DELETE FROM balance_sheets WHERE sale_sheet_id IN (${saleSheetIds.map((_, i) => `$${i + 1}`).join(',')})`,
         saleSheetIds
       );
+    }
+
+    // Recalculate balances for affected balance_sheets
+    for (const date of balanceSheetDates) {
+      // Get all entries for this date and after
+      const allBalances = await query(
+        `SELECT * FROM balance_sheets 
+         WHERE date >= $1 
+         ORDER BY date, id`,
+        [date]
+      );
+
+      if (allBalances.rowCount > 0) {
+        // Get the balance just before our date
+        const prevBalance = await query(
+          `SELECT balance FROM balance_sheets 
+           WHERE date < $1 
+           ORDER BY date DESC, id DESC LIMIT 1`,
+          [date]
+        );
+
+        let runningBalance = prevBalance.rowCount > 0 ? Number(prevBalance.rows[0].balance) : 0;
+
+        // Recalculate all balances from this date forward
+        for (const entry of allBalances.rows) {
+          runningBalance = runningBalance + Number(entry.credit) - Number(entry.debit);
+          
+          await query(
+            `UPDATE balance_sheets 
+             SET balance = $1 
+             WHERE id = $2`,
+            [runningBalance, entry.id]
+          );
+        }
+      }
     }
 
     // Delete sale sheets that reference this stock increment
@@ -621,6 +667,14 @@ export const deleteStockIncrement = async (req, res) => {
       );
     }
 
+    // Get dates of all warehouse balance entries that will be deleted for recalculation
+    const warehouseEntriesToDelete = await query(
+      `SELECT date FROM warehouse_balance_sheets 
+       WHERE stock_increment_id = $1`,
+      [stock_increment_id]
+    );
+    const warehouseDates = warehouseEntriesToDelete.rows.map(row => row.date);
+
     // Delete warehouse balance entries
     await query(
       `DELETE FROM warehouse_balance_sheets 
@@ -628,72 +682,79 @@ export const deleteStockIncrement = async (req, res) => {
       [stock_increment_id]
     );
 
-    // Recalculate warehouse balances for the specific warehouse
-    const warehouseBalances = await query(
-      `SELECT * FROM warehouse_balance_sheets 
-       WHERE type = $1 AND date >= $2
-       ORDER BY date, id`,
-      [warehouse_name, created_at]
-    );
-
-    let runningBalance = 0;
-    
-    // Find the previous balance before our deleted entry
-    const prevBalanceResult = await query(
-      `SELECT balance FROM warehouse_balance_sheets 
-       WHERE type = $1 AND date < $2 
-       ORDER BY date DESC, id DESC LIMIT 1`,
-      [warehouse_name, created_at]
-    );
-    
-    if (prevBalanceResult.rowCount > 0) {
-      runningBalance = Number(prevBalanceResult.rows[0].balance);
-    }
-
-    // Recalculate all subsequent balances for this warehouse
-    for (const entry of warehouseBalances.rows) {
-      runningBalance = runningBalance + Number(entry.credit) - Number(entry.debit);
-      
-      await query(
-        `UPDATE warehouse_balance_sheets 
-         SET balance = $1 
-         WHERE id = $2`,
-        [runningBalance, entry.id]
+    // Recalculate warehouse balances for all affected dates (specific warehouse and 'all')
+    for (const date of warehouseDates) {
+      // Recalculate for specific warehouse
+      const warehouseBalances = await query(
+        `SELECT * FROM warehouse_balance_sheets 
+         WHERE type = $1 AND date >= $2
+         ORDER BY date, id`,
+        [warehouse_name, date]
       );
-    }
 
-    // Recalculate warehouse balances for 'all' warehouse type
-    const allWarehouseBalances = await query(
-      `SELECT * FROM warehouse_balance_sheets 
-       WHERE type = 'all' AND date >= $1
-       ORDER BY date, id`,
-      [created_at]
-    );
+      if (warehouseBalances.rowCount > 0) {
+        let runningBalance = 0;
+        
+        // Find the previous balance before our date
+        const prevBalanceResult = await query(
+          `SELECT balance FROM warehouse_balance_sheets 
+           WHERE type = $1 AND date < $2 
+           ORDER BY date DESC, id DESC LIMIT 1`,
+          [warehouse_name, date]
+        );
+        
+        if (prevBalanceResult.rowCount > 0) {
+          runningBalance = Number(prevBalanceResult.rows[0].balance);
+        }
 
-    let runningBalanceAll = 0;
-    
-    // Find the previous balance before our deleted entry for 'all'
-    const prevBalanceAllResult = await query(
-      `SELECT balance FROM warehouse_balance_sheets 
-       WHERE type = 'all' AND date < $1 
-       ORDER BY date DESC, id DESC LIMIT 1`,
-      [created_at]
-    );
-    
-    if (prevBalanceAllResult.rowCount > 0) {
-      runningBalanceAll = Number(prevBalanceAllResult.rows[0].balance);
-    }
+        // Recalculate all subsequent balances for this warehouse
+        for (const entry of warehouseBalances.rows) {
+          runningBalance = runningBalance + Number(entry.credit) - Number(entry.debit);
+          
+          await query(
+            `UPDATE warehouse_balance_sheets 
+             SET balance = $1 
+             WHERE id = $2`,
+            [runningBalance, entry.id]
+          );
+        }
+      }
 
-    // Recalculate all subsequent balances for 'all' warehouse type
-    for (const entry of allWarehouseBalances.rows) {
-      runningBalanceAll = runningBalanceAll + Number(entry.credit) - Number(entry.debit);
-      
-      await query(
-        `UPDATE warehouse_balance_sheets 
-         SET balance = $1 
-         WHERE id = $2`,
-        [runningBalanceAll, entry.id]
+      // Recalculate for 'all' warehouse type
+      const allWarehouseBalances = await query(
+        `SELECT * FROM warehouse_balance_sheets 
+         WHERE type = 'all' AND date >= $1
+         ORDER BY date, id`,
+        [date]
       );
+
+      if (allWarehouseBalances.rowCount > 0) {
+        let runningBalanceAll = 0;
+        
+        // Find the previous balance before our date for 'all'
+        const prevBalanceAllResult = await query(
+          `SELECT balance FROM warehouse_balance_sheets 
+           WHERE type = 'all' AND date < $1 
+           ORDER BY date DESC, id DESC LIMIT 1`,
+          [date]
+        );
+        
+        if (prevBalanceAllResult.rowCount > 0) {
+          runningBalanceAll = Number(prevBalanceAllResult.rows[0].balance);
+        }
+
+        // Recalculate all subsequent balances for 'all' warehouse type
+        for (const entry of allWarehouseBalances.rows) {
+          runningBalanceAll = runningBalanceAll + Number(entry.credit) - Number(entry.debit);
+          
+          await query(
+            `UPDATE warehouse_balance_sheets 
+             SET balance = $1 
+             WHERE id = $2`,
+            [runningBalanceAll, entry.id]
+          );
+        }
+      }
     }
 
     // Finally, delete the stock increment record
@@ -706,7 +767,7 @@ export const deleteStockIncrement = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Stock increment and all related sale sheets and balance sheets deleted successfully",
+      message: "Stock increment and all related records deleted successfully with balance recalculations",
     });
   } catch (error) {
     await query('ROLLBACK');
